@@ -318,6 +318,28 @@
       letter-spacing: 0.05em;
     }
 
+    .copy-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-dim);
+      padding: 0.3rem 0.7rem;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-family: 'Space Grotesk', sans-serif;
+    }
+
+    .copy-btn:hover {
+      border-color: var(--purple);
+      color: var(--purple);
+    }
+
+    .copy-btn.copied {
+      border-color: var(--green);
+      color: var(--green);
+    }
+
     pre {
       margin: 0;
       overflow-x: auto;
@@ -582,6 +604,7 @@
       <div class="code-block">
         <div class="code-header">
           <span class="code-lang">YAML</span>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
         </div>
         <pre><code><span class="code-keyword">name:</span> Staqd
 
@@ -758,5 +781,18 @@ feat-2:              E'───F'   <span class="code-comment">(C, D removed; o
     </div>
   </footer>
 
+  <script>
+    function copyCode(btn) {
+      const code = btn.closest('.code-block').querySelector('code');
+      navigator.clipboard.writeText(code.textContent).then(() => {
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => {
+          btn.textContent = 'Copy';
+          btn.classList.remove('copied');
+        }, 2000);
+      });
+    }
+  </script>
 </body>
 </html>
