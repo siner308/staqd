@@ -1,0 +1,118 @@
+<svg width="1280" height="640" viewBox="0 0 1280 640" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0d1117;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#161b22;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="stackGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#a78bfa;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#8b5cf6;stop-opacity:1" />
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1280" height="640" fill="url(#bgGradient)"/>
+
+  <!-- Decorative grid pattern -->
+  <g opacity="0.05">
+    <path d="M 0 160 L 1280 160 M 0 320 L 1280 320 M 0 480 L 1280 480" stroke="#ffffff" stroke-width="1"/>
+    <path d="M 320 0 L 320 640 M 640 0 L 640 640 M 960 0 L 960 640" stroke="#ffffff" stroke-width="1"/>
+  </g>
+
+  <!-- Left section: Text content -->
+  <g>
+    <!-- Main title -->
+    <text x="80" y="200" font-family="'SF Pro Display', 'Helvetica Neue', Arial, sans-serif" font-size="96" font-weight="800" fill="#ffffff" letter-spacing="-2">
+      Staqd
+    </text>
+
+    <!-- Pronunciation -->
+    <text x="80" y="240" font-family="'SF Pro Display', 'Helvetica Neue', Arial, sans-serif" font-size="28" font-style="italic" fill="#6e7681" letter-spacing="1">
+      /stakt/
+    </text>
+
+    <!-- Tagline -->
+    <text x="80" y="310" font-family="'SF Pro Text', 'Helvetica Neue', Arial, sans-serif" font-size="32" font-weight="500" fill="#c9d1d9" letter-spacing="-0.5">
+      Stacked PR merge queue
+    </text>
+    <text x="80" y="355" font-family="'SF Pro Text', 'Helvetica Neue', Arial, sans-serif" font-size="32" font-weight="500" fill="#c9d1d9" letter-spacing="-0.5">
+      for GitHub Actions
+    </text>
+
+    <!-- Feature icons -->
+    <g transform="translate(80, 420)">
+      <!-- Git merge icon -->
+      <g>
+        <circle cx="16" cy="16" r="14" fill="none" stroke="#8b5cf6" stroke-width="2"/>
+        <path d="M 16 6 L 16 26 M 10 20 L 16 26 L 22 20" stroke="#8b5cf6" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <text x="45" y="22" font-family="'SF Pro Text', Arial, sans-serif" font-size="20" fill="#8e96a0">Automated merging</text>
+      </g>
+
+      <!-- GitHub Actions icon -->
+      <g transform="translate(0, 60)">
+        <circle cx="16" cy="16" r="14" fill="none" stroke="#8b5cf6" stroke-width="2"/>
+        <circle cx="16" cy="16" r="6" fill="#8b5cf6"/>
+        <circle cx="8" cy="8" r="2" fill="#8b5cf6"/>
+        <circle cx="24" cy="8" r="2" fill="#8b5cf6"/>
+        <circle cx="8" cy="24" r="2" fill="#8b5cf6"/>
+        <circle cx="24" cy="24" r="2" fill="#8b5cf6"/>
+        <text x="45" y="22" font-family="'SF Pro Text', Arial, sans-serif" font-size="20" fill="#8e96a0">GitHub Actions native</text>
+      </g>
+
+      <!-- PR comments icon -->
+      <g transform="translate(0, 120)">
+        <rect x="4" y="8" width="24" height="16" rx="3" fill="none" stroke="#8b5cf6" stroke-width="2"/>
+        <path d="M 10 28 L 14 24 L 28 24" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <text x="45" y="22" font-family="'SF Pro Text', Arial, sans-serif" font-size="20" fill="#8e96a0">PR comment integration</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- Right section: Stacked branches visualization -->
+  <g transform="translate(880, 160)">
+    <!-- Stack representation with connecting lines -->
+    <g filter="url(#glow)">
+      <!-- Bottom PR (feature-1) -->
+      <g>
+        <circle cx="100" cy="280" r="40" fill="url(#stackGradient)" opacity="0.9"/>
+        <text x="100" y="290" font-family="'SF Mono', monospace" font-size="16" font-weight="600" fill="#ffffff" text-anchor="middle">PR #3</text>
+        <text x="220" y="290" font-family="'SF Pro Text', Arial, sans-serif" font-size="18" fill="#8e96a0">feature-1</text>
+      </g>
+
+      <!-- Middle PR (feature-2, depends on feature-1) -->
+      <g>
+        <line x1="100" y1="240" x2="100" y2="190" stroke="#8b5cf6" stroke-width="4" stroke-dasharray="8,4" opacity="0.6"/>
+        <circle cx="100" cy="150" r="40" fill="url(#stackGradient)" opacity="0.9"/>
+        <text x="100" y="160" font-family="'SF Mono', monospace" font-size="16" font-weight="600" fill="#ffffff" text-anchor="middle">PR #2</text>
+        <text x="220" y="160" font-family="'SF Pro Text', Arial, sans-serif" font-size="18" fill="#8e96a0">feature-2</text>
+      </g>
+
+      <!-- Top PR (feature-3, depends on feature-2) -->
+      <g>
+        <line x1="100" y1="110" x2="100" y2="60" stroke="#8b5cf6" stroke-width="4" stroke-dasharray="8,4" opacity="0.6"/>
+        <circle cx="100" cy="20" r="40" fill="url(#stackGradient)" opacity="0.9"/>
+        <text x="100" y="30" font-family="'SF Mono', monospace" font-size="16" font-weight="600" fill="#ffffff" text-anchor="middle">PR #1</text>
+        <text x="220" y="30" font-family="'SF Pro Text', Arial, sans-serif" font-size="18" fill="#8e96a0">feature-3</text>
+      </g>
+
+      <!-- Stack label -->
+      <text x="100" y="360" font-family="'SF Pro Text', Arial, sans-serif" font-size="20" font-weight="600" fill="#8b5cf6" text-anchor="middle">Stack</text>
+
+      <!-- Arrow showing merge direction -->
+      <g transform="translate(-30, 140)">
+        <path d="M 10 0 L 10 200" stroke="#8b5cf6" stroke-width="3" opacity="0.4"/>
+        <path d="M 10 200 L 5 190 M 10 200 L 15 190" stroke="#8b5cf6" stroke-width="3" opacity="0.4" stroke-linecap="round"/>
+      </g>
+    </g>
+  </g>
+
+  <!-- Subtle accent line at bottom -->
+  <rect x="0" y="630" width="1280" height="10" fill="#8b5cf6" opacity="0.3"/>
+</svg>

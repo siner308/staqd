@@ -1,3 +1,7 @@
+[![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-powered-2088FF?logo=githubactions&logoColor=white)](https://github.com/siner308/staqd)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![GitHub release](https://img.shields.io/github/v/release/siner308/staqd?include_prereleases&sort=semver)](https://github.com/siner308/staqd/releases)
+
 # Staqd
 
 **/stakt/** — like "stacked"
@@ -34,7 +38,7 @@ jobs:
     if: >-
       github.event_name == 'issue_comment'
       && github.event.issue.pull_request
-      && startsWith(github.event.comment.body, 'stack ')
+      && (startsWith(github.event.comment.body, 'stack ') || startsWith(github.event.comment.body, 'st '))
     runs-on: ubuntu-latest
     permissions:
       pull-requests: read
@@ -121,11 +125,13 @@ Comment on a PR to trigger:
 
 | Command | Action |
 |---------|--------|
-| `stack merge` | Merge this PR and restack child branches |
-| `stack merge-all` | Merge the entire stack in order (all PRs must be approved) |
-| `stack merge-all --force` | Merge the entire stack (skip approval check) |
-| `stack restack` | Rebase child branches without merging |
-| `stack help` | Show usage |
+| `stack merge` (`st merge`) | Merge this PR and restack child branches |
+| `stack merge-all` (`st merge-all`) | Merge the entire stack in order (all PRs must be approved) |
+| `stack merge-all --force` (`st merge-all --force`) | Merge the entire stack (skip approval check) |
+| `stack restack` (`st restack`) | Rebase child branches without merging |
+| `stack help` (`st help`) | Show usage |
+
+> **Tip:** All commands support the short alias `st` — e.g., `st merge` instead of `stack merge`.
 
 ## Setting Up a Stack
 
@@ -230,6 +236,26 @@ feat-2:              E'───F'   (C, D removed; only E, F rebased)
 ```
 
 The skip SHA (`old_parent_tip_sha`) comes from GitHub's PR API, which preserves `head.sha` even after merge. No database needed.
+
+### Workflow
+
+```mermaid
+sequenceDiagram
+    participant Dev as Developer
+    participant PR as PR Comment
+    participant GA as GitHub Actions
+    participant Git as Git / GitHub API
+
+    Dev->>PR: stack merge
+    PR->>GA: Trigger workflow
+    GA->>Git: Merge PR (squash)
+    GA->>Git: git fetch origin
+    GA->>Git: git rebase --onto main skip_sha child
+    GA->>Git: git push --force-with-lease
+    GA->>PR: Post result comment
+
+    Note over Dev,Git: merge-all repeats this for each child (DFS)
+```
 
 ## Handling Conflicts
 
