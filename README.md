@@ -18,17 +18,45 @@ on:
   issue_comment:
     types: [created]
 
-concurrency:
-  group: staqd
-  cancel-in-progress: false
-
 jobs:
-  staqd:
+  # Guide comment — no concurrency needed
+  guide:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: siner308/staqd@v1
+
+  # Resolve base branch for concurrency group
+  resolve-base:
     if: >-
-      github.event_name == 'pull_request'
-      || (github.event_name == 'issue_comment'
-          && github.event.issue.pull_request
-          && startsWith(github.event.comment.body, 'stack '))
+      github.event_name == 'issue_comment'
+      && github.event.issue.pull_request
+      && startsWith(github.event.comment.body, 'stack ')
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      base-ref: ${{ steps.get.outputs.base-ref }}
+    steps:
+      - id: get
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: pr } = await github.rest.pulls.get({
+              ...context.repo,
+              pull_number: context.payload.issue.number,
+            });
+            core.setOutput('base-ref', pr.base.ref);
+
+  # Execute command — serialized per base branch
+  command:
+    needs: resolve-base
+    concurrency:
+      group: staqd-${{ needs.resolve-base.outputs.base-ref }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -246,15 +274,15 @@ Rejects the push if the remote ref changed since last fetch. Prevents overwritin
 </details>
 
 <details>
-<summary>Why concurrency group?</summary>
+<summary>Why per-base-branch concurrency?</summary>
 
 ```yaml
 concurrency:
-  group: staqd
+  group: staqd-${{ needs.resolve-base.outputs.base-ref }}
   cancel-in-progress: false
 ```
 
-Concurrent `stack merge` calls cause race conditions. `cancel-in-progress: false` creates a FIFO queue.
+Commands targeting the same base branch (e.g. `main`) are serialized to prevent race conditions and force-push conflicts. Independent stacks targeting different base branches run in parallel. `cancel-in-progress: false` creates a FIFO queue per base branch.
 </details>
 
 ## Alternatives
