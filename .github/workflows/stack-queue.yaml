@@ -294,11 +294,14 @@ jobs:
             // Restack 공통 로직
             // ════════════════════════════════════════
 
-            async function restackChildren(children, baseBranch, initialSkip) {
+            async function restackChildren(children, baseBranch, initialSkip, { parentBranch = null } = {}) {
               await exec.exec('git', ['fetch', 'origin']);
 
+              // parentBranch가 주어지면 머지 전 restack (onto = 부모 브랜치)
+              // 없으면 머지 후 restack (onto = baseBranch = main)
+              const merged = !parentBranch;
               const results = [];
-              let prevBase = `origin/${baseBranch}`;
+              let prevBase = parentBranch ? `origin/${parentBranch}` : `origin/${baseBranch}`;
               let prevSkip = initialSkip;
               let failed = false;
 
@@ -330,13 +333,16 @@ jobs:
                 }
               }
 
-              const first = results.find(r => r.status === 'restacked');
-              if (first) {
-                await github.rest.pulls
-                  .update({
-                    owner, repo, pull_number: first.pr, base: baseBranch,
-                  })
-                  .catch(() => {});
+              // 머지 후 restack에서만 첫 번째 자식의 base를 main으로 변경
+              if (merged) {
+                const first = results.find(r => r.status === 'restacked');
+                if (first) {
+                  await github.rest.pulls
+                    .update({
+                      owner, repo, pull_number: first.pr, base: baseBranch,
+                    })
+                    .catch(() => {});
+                }
               }
 
               return results;
@@ -444,7 +450,8 @@ jobs:
               }
 
               const results = await restackChildren(
-                children, baseBranch, pr.head.sha
+                children, baseBranch, pr.head.sha,
+                { parentBranch: pr.head.ref }
               );
               const ok = results.every(r => r.status === 'restacked');
 
