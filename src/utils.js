@@ -11,4 +11,13 @@ function parseStackMeta(body) {
   }
 }
 
-module.exports = { parseStackMeta };
+function buildStackGraph(prs) {
+  const graph = {};
+  for (const pr of prs) {
+    const meta = parseStackMeta(pr.body);
+    graph[pr.number] = meta?.children || [];
+  }
+  return graph;
+}
+
+module.exports = { parseStackMeta, buildStackGraph };
