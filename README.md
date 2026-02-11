@@ -154,6 +154,12 @@ concurrency:
 2. 부모 PR body에 메타데이터 추가
 3. PR comment로 커맨드 실행
 
+## Safety
+
+- 동시 실행 방지: `concurrency: stack-queue`로 직렬화
+- Force push 보호: `--force-with-lease` 사용
+- Conflict 감지: rebase 실패 시 자동 abort + 수동 명령어 제공
+
 ## Commands
 
 | Command | 동작 |
