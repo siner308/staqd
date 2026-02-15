@@ -450,12 +450,6 @@
       letter-spacing: 0.05em;
     }
 
-    .command-badge-safe {
-      background: rgba(16, 185, 129, 0.15);
-      color: var(--green);
-      border: 1px solid rgba(16, 185, 129, 0.3);
-    }
-
     .command-badge-write {
       background: rgba(139, 92, 246, 0.15);
       color: var(--purple);
@@ -746,7 +740,6 @@
         <div class="command-card">
           <div class="command-header">
             <code class="command-name">stack discover</code>
-            <span class="command-badge command-badge-safe">API only</span>
           </div>
           <p class="command-desc">Auto-detect the stack tree by scanning open PRs' base branch relationships. No manual metadata setup needed.</p>
           <div class="command-details">
@@ -775,7 +768,7 @@
         <div class="command-card">
           <div class="command-header">
             <code class="command-name">stack restack</code>
-            <span class="command-badge command-badge-write">git push</span>
+            <span class="command-badge command-badge-write">push</span>
           </div>
           <p class="command-desc">Rebase all direct child branches onto this PR's latest head. Use after pushing new commits to a parent PR.</p>
           <div class="command-details">
@@ -833,7 +826,6 @@
         <div class="command-card">
           <div class="command-header">
             <code class="command-name">stack help</code>
-            <span class="command-badge command-badge-safe">API only</span>
           </div>
           <p class="command-desc">Show available commands and the current stack structure detected from metadata.</p>
         </div>
