@@ -232,6 +232,124 @@ module.exports = async function command({ github, context, core, exec, command, 
   const children = meta?.children || [];
   const mergeMethod = meta?.merge_method || 'squash';
 
+  // ── discover ──
+  if (command === 'discover') {
+    const visited = new Set();
+    const tree = [];
+
+    async function findChildren(headBranch) {
+      const { data: prs } = await github.rest.pulls.list({
+        owner, repo, state: 'open', base: headBranch,
+      });
+      return prs.map(p => ({ branch: p.head.ref, pr: p.number }));
+    }
+
+    async function updatePrMeta(prData, existingMeta, newChildren) {
+      const body = prData.body || '';
+      const pat = /\n*<!-- stack-rebase:[\s\S]*? -->/;
+
+      if (!newChildren.length) {
+        // Remove stale metadata
+        if (pat.test(body)) {
+          await github.rest.pulls.update({
+            owner, repo, pull_number: prData.number,
+            body: body.replace(pat, '').trim(),
+          });
+        }
+        return;
+      }
+
+      const newMeta = { children: newChildren };
+      if (existingMeta?.merge_method) {
+        newMeta.merge_method = existingMeta.merge_method;
+      }
+      const metaComment = `<!-- stack-rebase:${JSON.stringify(newMeta)} -->`;
+      const newBody = pat.test(body)
+        ? body.replace(pat, '\n\n' + metaComment)
+        : body + '\n\n' + metaComment;
+
+      await github.rest.pulls.update({
+        owner, repo, pull_number: prData.number, body: newBody.trim(),
+      });
+    }
+
+    async function needsRestack(parentBranch, childBranch) {
+      try {
+        const { data } = await github.rest.repos.compareCommits({
+          owner, repo, base: childBranch, head: parentBranch,
+        });
+        return data.ahead_by > 0;
+      } catch {
+        return false;
+      }
+    }
+
+    async function discover(prNum, depth) {
+      if (visited.has(prNum)) return;
+      visited.add(prNum);
+
+      const { meta: existingMeta, pr: prData } = await getStackMeta(prNum);
+      const discoveredChildren = await findChildren(prData.head.ref);
+
+      await updatePrMeta(prData, existingMeta, discoveredChildren);
+
+      // Check restack status for each child
+      const childrenWithStatus = [];
+      for (const child of discoveredChildren) {
+        const stale = await needsRestack(prData.head.ref, child.branch);
+        childrenWithStatus.push({ ...child, needsRestack: stale });
+      }
+
+      tree.push({
+        pr: prNum,
+        branch: prData.head.ref,
+        children: childrenWithStatus,
+        depth,
+      });
+
+      for (const child of discoveredChildren) {
+        await discover(child.pr, depth + 1);
+      }
+    }
+
+    await discover(prNumber, 0);
+
+    const restackNeeded = tree.some(
+      node => node.children.some(c => c.needsRestack)
+    );
+
+    const lines = tree.map(node => {
+      const indent = '  '.repeat(node.depth);
+      const childInfo = node.children.length
+        ? ` → ${node.children.map(c => {
+            const warn = c.needsRestack ? ' ⚠️' : '';
+            return `#${c.pr}${warn}`;
+          }).join(', ')}`
+        : '';
+      return `${indent}- #${node.pr} (\`${node.branch}\`)${childInfo}`;
+    });
+
+    await post(prNumber, [
+      `### Stack Discovered`,
+      '',
+      `Found **${tree.length}** PR(s) in the stack:`,
+      '',
+      ...lines,
+      '',
+      tree.length > 1
+        ? 'All PR metadata has been updated.'
+        : 'No children found.',
+      ...(restackNeeded
+        ? [
+            '',
+            '> ⚠️ Some PRs are out of date with their parent branch.',
+            '> Run `st restack` on the parent PR to rebase.',
+          ]
+        : []),
+    ].join('\n'));
+    return;
+  }
+
   // ── help ──
   if (command === 'help') {
     const stack = children.length
@@ -251,6 +369,7 @@ module.exports = async function command({ github, context, core, exec, command, 
       '| `stack merge-all` (`st merge-all`) | Merge entire stack (requires approval) |',
       '| `stack merge-all --force` (`st merge-all --force`) | Skip approval check |',
       '| `stack restack` (`st restack`) | Restack children only |',
+      '| `stack discover` (`st discover`) | Auto-discover stack tree from base branches |',
       '',
       `**Stack:** ${stack}`,
     ].join('\n'));

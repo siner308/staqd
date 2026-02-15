@@ -55,7 +55,7 @@ runs:
         script: |
           const body = context.payload.comment.body.trim();
           const match = body.match(
-            /^(?:stack|st)\s+(merge-all|merge|restack|help)\b(.*)$/i
+            /^(?:stack|st)\s+(merge-all|merge|restack|discover|help)\b(.*)$/i
           );
           if (!match) {
             core.setOutput('valid', 'false');
@@ -79,14 +79,14 @@ runs:
           });
 
     - name: Checkout
-      if: steps.cmd.outputs.valid == 'true' && steps.cmd.outputs.command != 'help'
+      if: steps.cmd.outputs.valid == 'true' && steps.cmd.outputs.command != 'help' && steps.cmd.outputs.command != 'discover'
       uses: actions/checkout@v6
       with:
         fetch-depth: 0
         token: ${{ steps.app-token.outputs.token || inputs.token }}
 
     - name: Configure git
-      if: steps.cmd.outputs.valid == 'true' && steps.cmd.outputs.command != 'help'
+      if: steps.cmd.outputs.valid == 'true' && steps.cmd.outputs.command != 'help' && steps.cmd.outputs.command != 'discover'
       shell: bash
       run: |
         git config user.name "github-actions[bot]"
