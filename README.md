@@ -1,7 +1,13 @@
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![GitHub release](https://img.shields.io/github/v/release/siner308/staqd?include_prereleases&sort=semver)](https://github.com/siner308/staqd/releases)
+<p align="center">
+  <img src="docs/favicon.svg" alt="Staqd" width="80" height="80">
+</p>
 
-# Staqd
+<h1 align="center">Staqd</h1>
+
+<p align="center">
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+  <a href="https://github.com/siner308/staqd/releases"><img src="https://img.shields.io/github/v/release/siner308/staqd?include_prereleases&sort=semver" alt="GitHub release"></a>
+</p>
 
 **/stakt/** — like "stacked"
 
