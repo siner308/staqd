@@ -32,7 +32,7 @@ jobs:
       pull-requests: write
       issues: write
     steps:
-      - uses: siner308/staqd@v0.3
+      - uses: siner308/staqd@v0.5
         with:
           token: ${{ github.token }}
           app-id: ${{ inputs.app-id }}
@@ -74,7 +74,7 @@ jobs:
       issues: write
       checks: read
     steps:
-      - uses: siner308/staqd@v0.3
+      - uses: siner308/staqd@v0.5
         with:
           token: ${{ github.token }}
           app-id: ${{ inputs.app-id }}
