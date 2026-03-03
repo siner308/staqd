@@ -516,9 +516,8 @@ module.exports = async function command({ github, context, core, exec, command, 
       return;
     }
 
-    await deleteBranch(freshPr.head.ref);
-
     if (!freshChildren.length) {
+      await deleteBranch(freshPr.head.ref);
       await post(
         prNumber,
         `Merged into \`${freshBaseBranch}\`. (no children)`
@@ -587,6 +586,10 @@ module.exports = async function command({ github, context, core, exec, command, 
     }
 
     await mergeChildren(freshChildren, freshPr.head.sha);
+
+    // Delete root branch after all children are processed,
+    // so child PRs' base branch still exists during mergeChildren.
+    await deleteBranch(freshPr.head.ref);
 
     const allMerged = results.every(r => r.status === 'merged');
     const mergedCount =
