@@ -430,9 +430,8 @@ module.exports = async function command({ github, context, core, exec, command, 
       return;
     }
 
-    await deleteBranch(freshPr.head.ref);
-
     if (!freshChildren.length) {
+      await deleteBranch(freshPr.head.ref);
       await post(prNumber, `Merged into \`${freshBaseBranch}\`.`);
       return;
     }
@@ -440,6 +439,11 @@ module.exports = async function command({ github, context, core, exec, command, 
     const results = await restackChildren(
       freshChildren, freshBaseBranch, freshPr.head.sha
     );
+
+    // Delete parent branch after children are restacked,
+    // so child PRs' base branch still exists during restackChildren.
+    await deleteBranch(freshPr.head.ref);
+
     const ok = results.every(r => r.status === 'restacked');
 
     await post(prNumber, [
@@ -585,11 +589,13 @@ module.exports = async function command({ github, context, core, exec, command, 
       }
     }
 
-    await mergeChildren(freshChildren, freshPr.head.sha);
-
-    // Delete root branch after all children are processed,
-    // so child PRs' base branch still exists during mergeChildren.
-    await deleteBranch(freshPr.head.ref);
+    try {
+      await mergeChildren(freshChildren, freshPr.head.sha);
+    } finally {
+      // Delete root branch after all children are processed,
+      // so child PRs' base branch still exists during mergeChildren.
+      await deleteBranch(freshPr.head.ref);
+    }
 
     const allMerged = results.every(r => r.status === 'merged');
     const mergedCount =
