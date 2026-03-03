@@ -234,65 +234,59 @@ module.exports = async function command({ github, context, core, exec, command, 
   }
 
   // ════════════════════════════════════════
-  // Command dispatch
+  // Discover helpers (shared by discover, merge, merge-all)
   // ════════════════════════════════════════
 
-  const { meta, pr } = await getStackMeta(prNumber);
-  const baseBranch = pr.base.ref;
-  const children = meta?.children || [];
-  const mergeMethod = meta?.merge_method || 'squash';
+  async function findChildren(headBranch) {
+    const { data: prs } = await github.rest.pulls.list({
+      owner, repo, state: 'open', base: headBranch,
+    });
+    return prs.map(p => ({ branch: p.head.ref, pr: p.number }));
+  }
 
-  // ── discover ──
-  if (command === 'discover') {
+  async function updatePrMeta(prData, existingMeta, newChildren) {
+    const body = prData.body || '';
+    const pat = /\n*<!-- stack-rebase:[\s\S]*? -->/;
+
+    if (!newChildren.length) {
+      // Remove stale metadata
+      if (pat.test(body)) {
+        await github.rest.pulls.update({
+          owner, repo, pull_number: prData.number,
+          body: body.replace(pat, '').trim(),
+        });
+      }
+      return;
+    }
+
+    const newMeta = { children: newChildren };
+    if (existingMeta?.merge_method) {
+      newMeta.merge_method = existingMeta.merge_method;
+    }
+    const metaComment = `<!-- stack-rebase:${JSON.stringify(newMeta)} -->`;
+    const newBody = pat.test(body)
+      ? body.replace(pat, '\n\n' + metaComment)
+      : body + '\n\n' + metaComment;
+
+    await github.rest.pulls.update({
+      owner, repo, pull_number: prData.number, body: newBody.trim(),
+    });
+  }
+
+  async function needsRestack(parentBranch, childBranch) {
+    try {
+      const { data } = await github.rest.repos.compareCommits({
+        owner, repo, base: childBranch, head: parentBranch,
+      });
+      return data.ahead_by > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  async function runDiscover(startPrNum) {
     const visited = new Set();
     const tree = [];
-
-    async function findChildren(headBranch) {
-      const { data: prs } = await github.rest.pulls.list({
-        owner, repo, state: 'open', base: headBranch,
-      });
-      return prs.map(p => ({ branch: p.head.ref, pr: p.number }));
-    }
-
-    async function updatePrMeta(prData, existingMeta, newChildren) {
-      const body = prData.body || '';
-      const pat = /\n*<!-- stack-rebase:[\s\S]*? -->/;
-
-      if (!newChildren.length) {
-        // Remove stale metadata
-        if (pat.test(body)) {
-          await github.rest.pulls.update({
-            owner, repo, pull_number: prData.number,
-            body: body.replace(pat, '').trim(),
-          });
-        }
-        return;
-      }
-
-      const newMeta = { children: newChildren };
-      if (existingMeta?.merge_method) {
-        newMeta.merge_method = existingMeta.merge_method;
-      }
-      const metaComment = `<!-- stack-rebase:${JSON.stringify(newMeta)} -->`;
-      const newBody = pat.test(body)
-        ? body.replace(pat, '\n\n' + metaComment)
-        : body + '\n\n' + metaComment;
-
-      await github.rest.pulls.update({
-        owner, repo, pull_number: prData.number, body: newBody.trim(),
-      });
-    }
-
-    async function needsRestack(parentBranch, childBranch) {
-      try {
-        const { data } = await github.rest.repos.compareCommits({
-          owner, repo, base: childBranch, head: parentBranch,
-        });
-        return data.ahead_by > 0;
-      } catch {
-        return false;
-      }
-    }
 
     async function discover(prNum, depth) {
       if (visited.has(prNum)) return;
@@ -303,7 +297,6 @@ module.exports = async function command({ github, context, core, exec, command, 
 
       await updatePrMeta(prData, existingMeta, discoveredChildren);
 
-      // Check restack status for each child
       const childrenWithStatus = [];
       for (const child of discoveredChildren) {
         const stale = await needsRestack(prData.head.ref, child.branch);
@@ -322,7 +315,17 @@ module.exports = async function command({ github, context, core, exec, command, 
       }
     }
 
-    await discover(prNumber, 0);
+    await discover(startPrNum, 0);
+    return tree;
+  }
+
+  // ════════════════════════════════════════
+  // Command dispatch
+  // ════════════════════════════════════════
+
+  // ── discover ──
+  if (command === 'discover') {
+    const tree = await runDiscover(prNumber);
 
     const restackNeeded = tree.some(
       node => node.children.some(c => c.needsRestack)
@@ -330,7 +333,7 @@ module.exports = async function command({ github, context, core, exec, command, 
 
     const lines = tree.map(node => {
       const indent = '  '.repeat(node.depth);
-      const warn = node.needsRestack ? ' ⚠️' : '';
+      const warn = node.children.some(c => c.needsRestack) ? ' ⚠️' : '';
       return `${indent}- #${node.pr} (\`${node.branch}\`)${warn}`;
     });
 
@@ -354,6 +357,12 @@ module.exports = async function command({ github, context, core, exec, command, 
     ].join('\n'));
     return;
   }
+
+  // Read metadata (used by help, restack; merge/merge-all re-read after discover)
+  const { meta, pr } = await getStackMeta(prNumber);
+  const baseBranch = pr.base.ref;
+  const children = meta?.children || [];
+  const mergeMethod = meta?.merge_method || 'squash';
 
   // ── help ──
   if (command === 'help') {
@@ -406,22 +415,30 @@ module.exports = async function command({ github, context, core, exec, command, 
 
   // ── merge ──
   if (command === 'merge') {
-    const merged = await tryMerge(prNumber, mergeMethod);
+    // Auto-discover stack before merging
+    console.log('Running discover before merge...');
+    await runDiscover(prNumber);
+    const { meta: freshMeta, pr: freshPr } = await getStackMeta(prNumber);
+    const freshBaseBranch = freshPr.base.ref;
+    const freshChildren = freshMeta?.children || [];
+    const freshMergeMethod = freshMeta?.merge_method || 'squash';
+
+    const merged = await tryMerge(prNumber, freshMergeMethod);
     if (!merged.ok) {
       await post(prNumber, `Merge failed: ${merged.error}`);
       core.setFailed(merged.error);
       return;
     }
 
-    await deleteBranch(pr.head.ref);
+    await deleteBranch(freshPr.head.ref);
 
-    if (!children.length) {
-      await post(prNumber, `Merged into \`${baseBranch}\`.`);
+    if (!freshChildren.length) {
+      await post(prNumber, `Merged into \`${freshBaseBranch}\`.`);
       return;
     }
 
     const results = await restackChildren(
-      children, baseBranch, pr.head.sha
+      freshChildren, freshBaseBranch, freshPr.head.sha
     );
     const ok = results.every(r => r.status === 'restacked');
 
@@ -430,14 +447,14 @@ module.exports = async function command({ github, context, core, exec, command, 
         ? '### Merged + Restacked'
         : '### Merged (restack needs attention)',
       '',
-      `#${prNumber} merged into \`${baseBranch}\`.`,
+      `#${prNumber} merged into \`${freshBaseBranch}\`.`,
       '',
-      formatResults(results, baseBranch, pr.head.sha),
+      formatResults(results, freshBaseBranch, freshPr.head.sha),
     ].join('\n'));
 
     for (const r of results) {
       await post(r.pr, [
-        `#${prNumber} (\`${pr.head.ref}\`) was merged.`,
+        `#${prNumber} (\`${freshPr.head.ref}\`) was merged.`,
         r.status === 'restacked'
           ? 'Your branch was automatically restacked.'
           : `Restack status: **${r.status}**`,
@@ -450,6 +467,14 @@ module.exports = async function command({ github, context, core, exec, command, 
 
   // ── merge-all ──
   if (command === 'merge-all') {
+    // Auto-discover stack before merge-all
+    console.log('Running discover before merge-all...');
+    await runDiscover(prNumber);
+    const { meta: freshMeta, pr: freshPr } = await getStackMeta(prNumber);
+    const freshBaseBranch = freshPr.base.ref;
+    const freshChildren = freshMeta?.children || [];
+    const freshMergeMethod = freshMeta?.merge_method || 'squash';
+
     // Collect all PRs recursively (DFS)
     async function collectAllPRs(prNum) {
       const nums = [prNum];
@@ -481,7 +506,7 @@ module.exports = async function command({ github, context, core, exec, command, 
       }
     }
 
-    const first = await tryMerge(prNumber, mergeMethod);
+    const first = await tryMerge(prNumber, freshMergeMethod);
     if (!first.ok) {
       await post(
         prNumber,
@@ -491,12 +516,12 @@ module.exports = async function command({ github, context, core, exec, command, 
       return;
     }
 
-    await deleteBranch(pr.head.ref);
+    await deleteBranch(freshPr.head.ref);
 
-    if (!children.length) {
+    if (!freshChildren.length) {
       await post(
         prNumber,
-        `Merged into \`${baseBranch}\`. (no children)`
+        `Merged into \`${freshBaseBranch}\`. (no children)`
       );
       return;
     }
@@ -519,7 +544,7 @@ module.exports = async function command({ github, context, core, exec, command, 
         await ensureLocalBranch(child.branch);
 
         const rs = await doRestack(
-          child.branch, `origin/${baseBranch}`, parentSkipSha
+          child.branch, `origin/${freshBaseBranch}`, parentSkipSha
         );
         if (!rs.ok) {
           results.push({
@@ -530,14 +555,14 @@ module.exports = async function command({ github, context, core, exec, command, 
 
         await github.rest.pulls
           .update({
-            owner, repo, pull_number: child.pr, base: baseBranch,
+            owner, repo, pull_number: child.pr, base: freshBaseBranch,
           })
           .catch(() => {});
 
         console.log(
           `Waiting for CI on #${child.pr} (${child.branch})...`
         );
-        const merged = await tryMerge(child.pr, mergeMethod, 20);
+        const merged = await tryMerge(child.pr, freshMergeMethod, 20);
 
         if (!merged.ok) {
           results.push({
@@ -561,7 +586,7 @@ module.exports = async function command({ github, context, core, exec, command, 
       }
     }
 
-    await mergeChildren(children, pr.head.sha);
+    await mergeChildren(freshChildren, freshPr.head.sha);
 
     const allMerged = results.every(r => r.status === 'merged');
     const mergedCount =
@@ -591,7 +616,7 @@ module.exports = async function command({ github, context, core, exec, command, 
       '',
       '| Order | Branch | PR | Status |',
       '|-------|--------|-----|--------|',
-      `| 1 | \`${pr.head.ref}\` | #${prNumber} | Merged |`,
+      `| 1 | \`${freshPr.head.ref}\` | #${prNumber} | Merged |`,
       ...rows,
       '',
       !allMerged
