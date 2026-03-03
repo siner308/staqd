@@ -26,7 +26,7 @@ permissions:
 
 jobs:
   staqd:
-    uses: siner308/staqd/.github/workflows/staqd.yml@v0.5
+    uses: siner308/staqd/.github/workflows/staqd.yml@v1
 ```
 
 That's it. The reusable workflow handles everything internally: guide comments, base branch resolution, concurrency groups, and command execution.
@@ -36,7 +36,7 @@ That's it. The reusable workflow handles everything internally: guide comments, 
 ```yaml
 jobs:
   staqd:
-    uses: siner308/staqd/.github/workflows/staqd.yml@v0.5
+    uses: siner308/staqd/.github/workflows/staqd.yml@v1
     with:
       app-id: ${{ vars.STAQD_APP_ID }}
     secrets:
