@@ -171,8 +171,8 @@ Comment on a PR to trigger:
 
 | Command | Action |
 |---------|--------|
-| `stack merge` (`st merge`) | Merge this PR, restack child branches, and delete the merged branch |
-| `stack merge-all` (`st merge-all`) | Merge the entire stack in order, deleting each branch after merge (all PRs must be approved) |
+| `stack merge` (`st merge`) | Auto-discover stack, merge this PR, restack child branches, and delete the merged branch |
+| `stack merge-all` (`st merge-all`) | Auto-discover stack, merge the entire stack in order, deleting each branch after merge (all PRs must be approved) |
 | `stack merge-all --force` (`st merge-all --force`) | Same as `merge-all` but skips the approval check |
 | `stack restack` (`st restack`) | Rebase child branches without merging |
 | `stack discover` (`st discover`) | Auto-discover stack tree from base branches and update metadata |

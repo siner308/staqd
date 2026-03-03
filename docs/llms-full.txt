@@ -59,8 +59,8 @@ Why a GitHub App? `GITHUB_TOKEN` pushes don't trigger other workflows (GitHub se
 
 Comment on a PR to trigger:
 
-- `stack merge` (`st merge`) — Merge this PR, restack child branches, and delete the merged branch
-- `stack merge-all` (`st merge-all`) — Merge the entire stack in order, deleting each branch after merge (all PRs must be approved)
+- `stack merge` (`st merge`) — Auto-discover stack, merge this PR, restack child branches, and delete the merged branch
+- `stack merge-all` (`st merge-all`) — Auto-discover stack, merge the entire stack in order, deleting each branch after merge (all PRs must be approved)
 - `stack merge-all --force` (`st merge-all --force`) — Same as `merge-all` but skips the approval check
 - `stack restack` (`st restack`) — Rebase child branches without merging
 - `stack discover` (`st discover`) — Auto-discover stack tree from base branches and update metadata
@@ -84,17 +84,17 @@ Rebase all direct child branches onto this PR's latest head. Use after pushing n
 
 ### stack merge
 
-Merge this PR into its base branch, restack all child branches, and delete the merged branch.
+Auto-discover the stack tree, merge this PR into its base branch, restack all child branches, and delete the merged branch.
 
 - When to use: When this PR is approved and ready to merge, but child PRs still need more work.
-- What it does: Squash-merges the PR, deletes the merged branch, rebases children onto the base branch (e.g., `main`), and updates each child's base branch reference.
+- What it does: Runs discover to refresh stack metadata, squash-merges the PR, deletes the merged branch, rebases children onto the base branch (e.g., `main`), and updates each child's base branch reference.
 
 ### stack merge-all
 
-Merge the entire stack in DFS order. Each PR is rebased, merged, its branch deleted, then its children are processed.
+Auto-discover the stack tree, then merge the entire stack in DFS order. Each PR is rebased, merged, its branch deleted, then its children are processed.
 
 - When to use: When the entire stack is reviewed and approved — merge everything at once.
-- What it does: Checks approval status on all PRs, then sequentially rebases and merges each one, deleting each branch after merge. Retries up to 10 min per PR for CI to pass. The result table includes merge order — if a conflict occurs, the failure message shows which PRs to fix and in what order.
+- What it does: Runs discover to refresh stack metadata, checks approval status on all PRs, then sequentially rebases and merges each one, deleting each branch after merge. Retries up to 10 min per PR for CI to pass. The result table includes merge order — if a conflict occurs, the failure message shows which PRs to fix and in what order.
 - Options: Add `--force` to skip the approval check — otherwise identical behavior (e.g., `st merge-all --force`).
 
 ### stack help

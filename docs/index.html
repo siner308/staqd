@@ -1077,7 +1077,7 @@
             <span class="command-badge command-badge-write">merge + push</span>
             <a href="#cmd-merge" class="cmd-anchor" aria-label="Link to this command">#</a>
           </div>
-          <p class="command-desc" data-i18n="cmd.merge.desc">Merge this PR into its base branch, then automatically restack all child branches.</p>
+          <p class="command-desc" data-i18n="cmd.merge.desc">Auto-discover the stack tree, merge this PR into its base branch, then automatically restack all child branches.</p>
           <div class="command-details">
             <div class="command-detail-item">
               <span class="command-detail-label" data-i18n="common.whenToUse">When to use</span>
@@ -1085,7 +1085,7 @@
             </div>
             <div class="command-detail-item">
               <span class="command-detail-label" data-i18n="common.whatItDoes">What it does</span>
-              <span data-i18n-html="cmd.merge.what">Squash-merges the PR, rebases children onto the base branch (e.g., <code>main</code>), and updates each child's base branch reference</span>
+              <span data-i18n-html="cmd.merge.what">Runs discover to refresh stack metadata, squash-merges the PR, rebases children onto the base branch (e.g., <code>main</code>), and updates each child's base branch reference</span>
             </div>
           </div>
         </div>
@@ -1096,7 +1096,7 @@
             <span class="command-badge command-badge-write">merge + push</span>
             <a href="#cmd-merge-all" class="cmd-anchor" aria-label="Link to this command">#</a>
           </div>
-          <p class="command-desc" data-i18n="cmd.mergeAll.desc">Merge the entire stack in DFS order. Each PR is rebased, merged, then its children are processed.</p>
+          <p class="command-desc" data-i18n="cmd.mergeAll.desc">Auto-discover the stack tree, then merge the entire stack in DFS order. Each PR is rebased, merged, then its children are processed.</p>
           <div class="command-details">
             <div class="command-detail-item">
               <span class="command-detail-label" data-i18n="common.whenToUse">When to use</span>
@@ -1104,7 +1104,7 @@
             </div>
             <div class="command-detail-item">
               <span class="command-detail-label" data-i18n="common.whatItDoes">What it does</span>
-              <span data-i18n="cmd.mergeAll.what">Checks approval status on all PRs, then sequentially rebases and merges each one. Retries up to 10 min per PR for CI to pass</span>
+              <span data-i18n="cmd.mergeAll.what">Runs discover to refresh stack metadata, checks approval status on all PRs, then sequentially rebases and merges each one. Retries up to 10 min per PR for CI to pass</span>
             </div>
             <div class="command-detail-item">
               <span class="command-detail-label" data-i18n="common.options">Options</span>
@@ -1301,13 +1301,13 @@ feat-2:              E'───F'   <span class="code-comment">(C, D removed; o
         'cmd.restack.when': 'After updating a parent PR with new commits, or when <code>st discover</code> shows ⚠️ indicators',
         'cmd.restack.what': 'Runs <code>git rebase --onto</code> for each child branch and force-pushes. Posts conflict resolution commands if rebase fails',
 
-        'cmd.merge.desc': 'Merge this PR into its base branch, then automatically restack all child branches.',
+        'cmd.merge.desc': 'Auto-discover the stack tree, merge this PR into its base branch, then automatically restack all child branches.',
         'cmd.merge.when': 'When this PR is approved and ready to merge, but child PRs still need more work',
-        'cmd.merge.what': 'Squash-merges the PR, rebases children onto the base branch (e.g., <code>main</code>), and updates each child\'s base branch reference',
+        'cmd.merge.what': 'Runs discover to refresh stack metadata, squash-merges the PR, rebases children onto the base branch (e.g., <code>main</code>), and updates each child\'s base branch reference',
 
-        'cmd.mergeAll.desc': 'Merge the entire stack in DFS order. Each PR is rebased, merged, then its children are processed.',
+        'cmd.mergeAll.desc': 'Auto-discover the stack tree, then merge the entire stack in DFS order. Each PR is rebased, merged, then its children are processed.',
         'cmd.mergeAll.when': 'When the entire stack is reviewed and approved — merge everything at once',
-        'cmd.mergeAll.what': 'Checks approval status on all PRs, then sequentially rebases and merges each one. Retries up to 10 min per PR for CI to pass',
+        'cmd.mergeAll.what': 'Runs discover to refresh stack metadata, checks approval status on all PRs, then sequentially rebases and merges each one. Retries up to 10 min per PR for CI to pass',
         'cmd.mergeAll.options': 'Add <code>--force</code> to skip the approval check (e.g., <code>st merge-all --force</code>)',
 
         'cmd.help.desc': 'Show available commands and the current stack structure detected from metadata.',
@@ -1404,13 +1404,13 @@ feat-2:              E'───F'   <span class="code-comment">(C, D removed; o
         'cmd.restack.when': '상위 PR에 새 커밋을 추가한 후, 또는 <code>st discover</code>에서 ⚠️ 표시가 나타날 때 사용하세요',
         'cmd.restack.what': '각 하위 브랜치에 <code>git rebase --onto</code>를 실행하고 강제 푸시합니다. 리베이스 실패 시 충돌 해결 명령어를 안내합니다',
 
-        'cmd.merge.desc': '이 PR을 베이스 브랜치에 머지한 후, 모든 하위 브랜치를 자동으로 리스택합니다.',
+        'cmd.merge.desc': '스택 트리를 자동 탐색한 후, 이 PR을 베이스 브랜치에 머지하고 모든 하위 브랜치를 자동으로 리스택합니다.',
         'cmd.merge.when': '이 PR이 승인되어 머지할 준비가 됐지만, 하위 PR은 아직 작업이 필요할 때 사용하세요',
-        'cmd.merge.what': 'PR을 스쿼시 머지하고, 하위 브랜치를 베이스 브랜치(예: <code>main</code>)에 리베이스하며, 각 하위 PR의 베이스 브랜치를 업데이트합니다',
+        'cmd.merge.what': 'discover를 실행하여 스택 메타데이터를 갱신하고, PR을 스쿼시 머지한 후, 하위 브랜치를 베이스 브랜치(예: <code>main</code>)에 리베이스하며, 각 하위 PR의 베이스 브랜치를 업데이트합니다',
 
-        'cmd.mergeAll.desc': '전체 스택을 DFS 순서로 머지합니다. 각 PR을 리베이스하고 머지한 후, 하위 PR을 순차적으로 처리합니다.',
+        'cmd.mergeAll.desc': '스택 트리를 자동 탐색한 후, 전체 스택을 DFS 순서로 머지합니다. 각 PR을 리베이스하고 머지한 후, 하위 PR을 순차적으로 처리합니다.',
         'cmd.mergeAll.when': '전체 스택의 리뷰와 승인이 완료되었을 때 사용하세요 — 한번에 모두 머지할 수 있습니다',
-        'cmd.mergeAll.what': '모든 PR의 승인 상태를 확인한 후 순차적으로 리베이스 및 머지합니다. PR당 최대 10분까지 CI 통과를 재시도합니다',
+        'cmd.mergeAll.what': 'discover를 실행하여 스택 메타데이터를 갱신하고, 모든 PR의 승인 상태를 확인한 후 순차적으로 리베이스 및 머지합니다. PR당 최대 10분까지 CI 통과를 재시도합니다',
         'cmd.mergeAll.options': '<code>--force</code>를 추가하면 승인 확인을 건너뜁니다 (예: <code>st merge-all --force</code>)',
 
         'cmd.help.desc': '사용 가능한 명령어와 메타데이터에서 감지된 현재 스택 구조를 보여줍니다.',
