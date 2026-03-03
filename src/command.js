@@ -579,13 +579,15 @@ module.exports = async function command({ github, context, core, exec, command, 
         }
 
         results.push({ ...child, status: 'merged', oldTip, order });
-        await deleteBranch(child.branch);
 
-        // Recursively process this child's children
+        // Recursively process this child's children before deleting branch,
+        // so grandchild PRs' base branch still exists during processing.
         const { meta: childMeta } = await getStackMeta(child.pr);
         if (childMeta?.children?.length) {
           await mergeChildren(childMeta.children, oldTip);
         }
+
+        await deleteBranch(child.branch);
       }
     }
 
