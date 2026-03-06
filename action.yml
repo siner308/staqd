@@ -1,5 +1,5 @@
 name: 'Staqd'
-description: 'Stacked PR merge queue powered by GitHub Actions and PR comments. No CLI, no SaaS.'
+description: 'Stacked PR merge queue powered by GitHub Actions and PR comments.'
 author: 'siner308'
 
 branding:

@@ -1,28 +1,15 @@
-name: Staqd (dogfood)
+# Dogfood: tests the composite action directly from this repo (uses: ./)
+name: Staqd Command (dogfood)
 
 on:
-  pull_request:
-    types: [opened, edited, closed]
   issue_comment:
     types: [created]
 
 jobs:
-  # Guide comment — no concurrency needed (idempotent)
-  guide:
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
-      issues: write
-    steps:
-      - uses: actions/checkout@v6  # needed for uses: ./
-      - uses: ./  # dogfood: use local action
-
   # Resolve base branch for concurrency group
   resolve-base:
     if: >-
-      github.event_name == 'issue_comment'
-      && github.event.issue.pull_request
+      github.event.issue.pull_request
       && (startsWith(github.event.comment.body, 'stack ') || startsWith(github.event.comment.body, 'st '))
     runs-on: ubuntu-latest
     permissions:
@@ -54,5 +41,5 @@ jobs:
       issues: write
       checks: read
     steps:
-      - uses: actions/checkout@v6  # needed for uses: ./
-      - uses: ./  # dogfood: use local action
+      - uses: actions/checkout@v6
+      - uses: ./

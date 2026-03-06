@@ -12,18 +12,37 @@
 **/stakt/** — like "stacked"
 
 Stacked PR merge queue powered by GitHub Actions and PR comments.
-No CLI to install. No SaaS dependency. One workflow file is all you need.
 
 ## Usage
 
 ### Basic
 
+Add a workflow file for each of the two events:
+
+`.github/workflows/staqd-auto-detect.yml` — runs on pull request events:
+
 ```yaml
-name: Staqd
+name: Staqd Auto Detect
 
 on:
   pull_request:
     types: [opened, edited, closed]
+
+permissions:
+  pull-requests: write
+  issues: write
+
+jobs:
+  staqd:
+    uses: siner308/staqd/.github/workflows/staqd-auto-detect.yml@v1
+```
+
+`.github/workflows/staqd-command.yml` — runs on PR comment commands:
+
+```yaml
+name: Staqd Command
+
+on:
   issue_comment:
     types: [created]
 
@@ -35,24 +54,71 @@ permissions:
 
 jobs:
   staqd:
-    uses: siner308/staqd/.github/workflows/staqd.yml@v1
+    uses: siner308/staqd/.github/workflows/staqd-command.yml@v1
 ```
 
-That's it. The reusable workflow handles everything internally: guide comments, base branch resolution, concurrency groups, and command execution.
+That's it. Each workflow triggers only on its relevant event, keeping PR checks clean and focused.
 
 ### With GitHub App (recommended for CI auto-trigger)
 
+`.github/workflows/staqd-auto-detect.yml`:
+
 ```yaml
+name: Staqd Auto Detect
+
+on:
+  pull_request:
+    types: [opened, edited, closed]
+
+permissions:
+  pull-requests: write
+  issues: write
+
 jobs:
   staqd:
-    uses: siner308/staqd/.github/workflows/staqd.yml@v1
+    uses: siner308/staqd/.github/workflows/staqd-auto-detect.yml@v1
     with:
       app-id: ${{ vars.STAQD_APP_ID }}
     secrets:
       app-private-key: ${{ secrets.STAQD_APP_PRIVATE_KEY }}
 ```
 
+`.github/workflows/staqd-command.yml`:
+
+```yaml
+name: Staqd Command
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  checks: read
+
+jobs:
+  staqd:
+    uses: siner308/staqd/.github/workflows/staqd-command.yml@v1
+    with:
+      app-id: ${{ vars.STAQD_APP_ID }}
+    secrets:
+      app-private-key: ${{ secrets.STAQD_APP_PRIVATE_KEY }}
+```
+
+> **Deprecation:** The single-file `staqd.yml` is deprecated. Use the two-file setup above.
+
 ### Reusable Workflow Inputs
+
+**`staqd-auto-detect.yml`**
+
+| Input | Description | Required | Default |
+|-------|-------------|----------|---------|
+| `app-id` | GitHub App ID. Used with `app-private-key` to generate an installation token. | No | |
+| `runs-on` | Runner label for all jobs | No | `ubuntu-latest` |
+
+**`staqd-command.yml`**
 
 | Input | Description | Required | Default |
 |-------|-------------|----------|---------|

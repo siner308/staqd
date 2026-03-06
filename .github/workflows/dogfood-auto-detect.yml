@@ -1,0 +1,16 @@
+# Dogfood: tests the composite action directly from this repo (uses: ./)
+name: Staqd Auto Detect (dogfood)
+
+on:
+  pull_request:
+    types: [opened, edited, closed]
+
+jobs:
+  auto-detect:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./

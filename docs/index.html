@@ -5,12 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <title>Staqd — Stacked PR merge queue powered by GitHub Actions</title>
-  <meta name="description" content="No CLI to install. No SaaS dependency. One workflow file is all you need.">
+  <meta name="description" content="Stacked PR merge queue powered by GitHub Actions and PR comments.">
 
   <!-- OpenGraph -->
   <meta property="og:type" content="website">
   <meta property="og:title" content="Staqd — Stacked PR merge queue">
-  <meta property="og:description" content="Stacked PR merge queue powered by GitHub Actions and PR comments. No CLI, no SaaS, one workflow file.">
+  <meta property="og:description" content="Stacked PR merge queue powered by GitHub Actions and PR comments.">
   <meta property="og:url" content="https://siner308.github.io/staqd/">
   <meta property="og:image" content="https://siner308.github.io/staqd/social-preview.png">
   <meta property="og:image:width" content="1280">
@@ -20,7 +20,7 @@
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Staqd — Stacked PR merge queue">
-  <meta name="twitter:description" content="Stacked PR merge queue powered by GitHub Actions and PR comments. No CLI, no SaaS, one workflow file.">
+  <meta name="twitter:description" content="Stacked PR merge queue powered by GitHub Actions and PR comments.">
   <meta name="twitter:image" content="https://siner308.github.io/staqd/social-preview.png">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -398,64 +398,6 @@
       margin-bottom: 3rem;
     }
 
-    /* Zero Setup Badges */
-    .badges {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-      gap: 1.5rem;
-      margin-top: 3rem;
-    }
-
-    .badge-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 2.5rem 2rem;
-      text-align: center;
-      transition: all 0.3s ease;
-      position: relative;
-      overflow: hidden;
-    }
-
-    .badge-card::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 3px;
-      background: linear-gradient(90deg, var(--purple), var(--green));
-      transform: scaleX(0);
-      transform-origin: left;
-      transition: transform 0.3s ease;
-    }
-
-    .badge-card:hover::before {
-      transform: scaleX(1);
-    }
-
-    .badge-card:hover {
-      transform: translateY(-4px);
-      border-color: var(--purple);
-      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
-    }
-
-    .badge-icon {
-      font-size: 3rem;
-      margin-bottom: 1rem;
-    }
-
-    .badge-card h3 {
-      font-size: 1.5rem;
-      margin-bottom: 0.5rem;
-      color: var(--purple);
-    }
-
-    .badge-card p {
-      color: var(--text-dim);
-      font-size: 0.95rem;
-    }
-
     /* Code Block */
     .code-block {
       background: var(--surface);
@@ -779,10 +721,6 @@
         min-height: 80vh;
       }
 
-      .badges {
-        grid-template-columns: 1fr;
-      }
-
       .hero-cta {
         flex-direction: column;
         width: 100%;
@@ -958,47 +896,43 @@
     <div class="scroll-hint">↓</div>
   </section>
 
-  <!-- Zero Setup -->
-  <section id="features">
-    <div class="container">
-      <h2 id="features-heading"><span data-i18n="features.heading">Zero Setup Tax</span><a href="#features-heading" class="anchor-link" aria-label="Link to this section">#</a></h2>
-      <p class="section-intro" data-i18n="features.intro">No CLI to install. No SaaS dependency. One workflow file is all you need.</p>
-      <div class="badges">
-        <div class="badge-card">
-          <div class="badge-icon">🚫</div>
-          <h3 data-i18n="features.noCli">No CLI</h3>
-          <p data-i18n="features.noCliDesc">Pure GitHub Actions. No binary to install, update, or maintain across your team.</p>
-        </div>
-        <div class="badge-card">
-          <div class="badge-icon">☁️</div>
-          <h3 data-i18n="features.noSaas">No SaaS</h3>
-          <p data-i18n="features.noSaasDesc">No external service, no account creation, no API quotas. Your repo, your control.</p>
-        </div>
-        <div class="badge-card">
-          <div class="badge-icon">📄</div>
-          <h3 data-i18n="features.justYaml">Just YAML</h3>
-          <p data-i18n="features.justYamlDesc">One workflow file. Copy, commit, done. Stack metadata lives in PR body comments.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
   <!-- Quick Start -->
   <section id="quickstart">
     <div class="container">
       <h2 id="quickstart-heading"><span data-i18n="quickstart.heading">Quick Start</span><a href="#quickstart-heading" class="anchor-link" aria-label="Link to this section">#</a></h2>
-      <p class="section-intro" data-i18n-html="quickstart.intro">Add this workflow to <code>.github/workflows/staqd.yml</code></p>
+      <p class="section-intro" data-i18n-html="quickstart.intro">Add a workflow file for each of the two events:</p>
 
+      <p style="margin-bottom: 0.5rem; font-weight: 600;"><code>.github/workflows/staqd-auto-detect.yml</code></p>
       <div class="code-block">
         <div class="code-header">
           <span class="code-lang">YAML</span>
           <button class="copy-btn" data-i18n="common.copy" onclick="copyCode(this)">Copy</button>
         </div>
-        <pre><code><span class="code-keyword">name:</span> Staqd
+        <pre><code><span class="code-keyword">name:</span> Staqd Auto Detect
 
 <span class="code-keyword">on:</span>
   <span class="code-property">pull_request:</span>
     <span class="code-property">types:</span> [opened, edited, closed]
+
+<span class="code-keyword">permissions:</span>
+  <span class="code-property">pull-requests:</span> write
+  <span class="code-property">issues:</span> write
+
+<span class="code-keyword">jobs:</span>
+  <span class="code-property">staqd:</span>
+    <span class="code-keyword">uses:</span> siner308/staqd/.github/workflows/staqd-auto-detect.yml@v1
+</code></pre>
+      </div>
+
+      <p style="margin-top: 1.5rem; margin-bottom: 0.5rem; font-weight: 600;"><code>.github/workflows/staqd-command.yml</code></p>
+      <div class="code-block">
+        <div class="code-header">
+          <span class="code-lang">YAML</span>
+          <button class="copy-btn" data-i18n="common.copy" onclick="copyCode(this)">Copy</button>
+        </div>
+        <pre><code><span class="code-keyword">name:</span> Staqd Command
+
+<span class="code-keyword">on:</span>
   <span class="code-property">issue_comment:</span>
     <span class="code-property">types:</span> [created]
 
@@ -1010,7 +944,7 @@
 
 <span class="code-keyword">jobs:</span>
   <span class="code-property">staqd:</span>
-    <span class="code-keyword">uses:</span> siner308/staqd/.github/workflows/staqd.yml@v1
+    <span class="code-keyword">uses:</span> siner308/staqd/.github/workflows/staqd-command.yml@v1
 </code></pre>
       </div>
     </div>
@@ -1278,17 +1212,8 @@ feat-2:              E'───F'   <span class="code-comment">(C, D removed; o
         'hero.viewGithub': 'View on GitHub',
         'hero.getStarted': 'Get Started',
 
-        'features.heading': 'Zero Setup Tax',
-        'features.intro': 'No CLI to install. No SaaS dependency. One workflow file is all you need.',
-        'features.noCli': 'No CLI',
-        'features.noCliDesc': 'Pure GitHub Actions. No binary to install, update, or maintain across your team.',
-        'features.noSaas': 'No SaaS',
-        'features.noSaasDesc': 'No external service, no account creation, no API quotas. Your repo, your control.',
-        'features.justYaml': 'Just YAML',
-        'features.justYamlDesc': 'One workflow file. Copy, commit, done. Stack metadata lives in PR body comments.',
-
         'quickstart.heading': 'Quick Start',
-        'quickstart.intro': 'Add this workflow to <code>.github/workflows/staqd.yml</code>',
+        'quickstart.intro': 'Add a workflow file for each of the two events:',
 
         'commands.heading': 'Commands',
         'commands.intro': 'Comment on a PR to trigger actions. All commands support the short alias <code>st</code> (e.g., <code>st merge</code>).',
@@ -1381,17 +1306,8 @@ feat-2:              E'───F'   <span class="code-comment">(C, D removed; o
         'hero.viewGithub': 'GitHub에서 보기',
         'hero.getStarted': '시작하기',
 
-        'features.heading': '설정 없이 바로 시작하세요',
-        'features.intro': 'CLI를 설치할 필요 없습니다. SaaS에 의존하지 않습니다. 워크플로우 파일 하나면 충분합니다.',
-        'features.noCli': 'CLI 없음',
-        'features.noCliDesc': '순수 GitHub Actions 기반입니다. 팀 전체에 별도로 설치하거나 관리할 바이너리가 없습니다.',
-        'features.noSaas': 'SaaS 없음',
-        'features.noSaasDesc': '외부 서비스도, 계정 생성도, API 할당량도 필요 없습니다. 당신의 저장소에서 직접 관리하세요.',
-        'features.justYaml': 'YAML 하나면 끝',
-        'features.justYamlDesc': '워크플로우 파일 하나만 추가하면 됩니다. 복사하고 커밋하면 준비 완료. 스택 메타데이터는 PR 본문에 저장됩니다.',
-
         'quickstart.heading': '빠른 시작',
-        'quickstart.intro': '<code>.github/workflows/staqd.yml</code>에 이 워크플로우를 추가하세요',
+        'quickstart.intro': '두 가지 이벤트에 대한 각각의 워크플로우 파일을 추가하세요:',
 
         'commands.heading': '명령어',
         'commands.intro': 'PR에 코멘트를 남겨 작업을 실행하세요. 모든 명령어는 단축 별칭 <code>st</code>를 지원합니다 (예: <code>st merge</code>).',
