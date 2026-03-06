@@ -40,7 +40,7 @@ module.exports = async function guide({ github, context }) {
     '| `stack merge` (`st merge`) | Merge this PR, restack children |',
     '| `stack merge-all` (`st merge-all`) | Merge entire stack (requires all approved) |',
     '| `stack merge-all --force` (`st merge-all --force`) | Merge entire stack (skip approval check) |',
-    '| `stack restack` (`st restack`) | Restack children without merging |',
+    '| `stack restack` (`st restack`) | Restack entire stack recursively |',
     '| `stack discover` (`st discover`) | Auto-discover stack tree from base branches |',
     '',
     `**Stack:** ${stack}`,

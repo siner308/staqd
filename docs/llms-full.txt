@@ -122,7 +122,7 @@ Comment on a PR to trigger:
 - `stack merge` (`st merge`) — Auto-discover stack, merge this PR, restack child branches, and delete the merged branch
 - `stack merge-all` (`st merge-all`) — Auto-discover stack, merge the entire stack in order, deleting each branch after merge (all PRs must be approved)
 - `stack merge-all --force` (`st merge-all --force`) — Same as `merge-all` but skips the approval check
-- `stack restack` (`st restack`) — Rebase child branches without merging
+- `stack restack` (`st restack`) — Restack entire stack recursively
 - `stack discover` (`st discover`) — Auto-discover stack tree from base branches and update metadata
 - `stack help` (`st help`) — Show usage
 
@@ -137,10 +137,10 @@ Auto-detect the stack tree by scanning open PRs' base branch relationships. No m
 
 ### stack restack
 
-Rebase all direct child branches onto this PR's latest head. Use after pushing new commits to a parent PR.
+Restack entire stack recursively — rebases all descendant branches in topological order. Use after pushing new commits to a parent PR.
 
 - When to use: After updating a parent PR with new commits, or when `st discover` shows warning indicators.
-- What it does: Runs `git rebase --onto` for each child branch and force-pushes. Posts conflict resolution commands if rebase fails.
+- What it does: Auto-discovers the stack, then runs `git rebase --onto` for each descendant branch in topological order. Stops recursing into subtrees on conflict and posts resolution commands.
 
 ### stack merge
 

@@ -992,7 +992,7 @@
             <span class="command-badge command-badge-write">push</span>
             <a href="#cmd-restack" class="cmd-anchor" aria-label="Link to this command">#</a>
           </div>
-          <p class="command-desc" data-i18n="cmd.restack.desc">Rebase all direct child branches onto this PR's latest head. Use after pushing new commits to a parent PR.</p>
+          <p class="command-desc" data-i18n="cmd.restack.desc">Restack entire stack recursively — rebases all descendant branches in topological order. Use after pushing new commits to a parent PR.</p>
           <div class="command-details">
             <div class="command-detail-item">
               <span class="command-detail-label" data-i18n="common.whenToUse">When to use</span>
@@ -1000,7 +1000,7 @@
             </div>
             <div class="command-detail-item">
               <span class="command-detail-label" data-i18n="common.whatItDoes">What it does</span>
-              <span data-i18n-html="cmd.restack.what">Runs <code>git rebase --onto</code> for each child branch and force-pushes. Posts conflict resolution commands if rebase fails</span>
+              <span data-i18n-html="cmd.restack.what">Auto-discovers the stack, then runs <code>git rebase --onto</code> for each descendant branch in topological order. Stops recursing into subtrees on conflict and posts resolution commands</span>
             </div>
           </div>
         </div>
@@ -1222,9 +1222,9 @@ feat-2:              E'───F'   <span class="code-comment">(C, D removed; o
         'cmd.discover.when': "After creating stacked PRs, or when you re-target a PR's base branch to form a new stack",
         'cmd.discover.what': "Recursively finds child PRs via base branch, updates metadata in each PR body, and reports if any children need restacking",
 
-        'cmd.restack.desc': "Rebase all direct child branches onto this PR's latest head. Use after pushing new commits to a parent PR.",
+        'cmd.restack.desc': "Restack entire stack recursively — rebases all descendant branches in topological order. Use after pushing new commits to a parent PR.",
         'cmd.restack.when': 'After updating a parent PR with new commits, or when <code>st discover</code> shows ⚠️ indicators',
-        'cmd.restack.what': 'Runs <code>git rebase --onto</code> for each child branch and force-pushes. Posts conflict resolution commands if rebase fails',
+        'cmd.restack.what': 'Auto-discovers the stack, then runs <code>git rebase --onto</code> for each descendant branch in topological order. Stops recursing into subtrees on conflict and posts resolution commands',
 
         'cmd.merge.desc': 'Auto-discover the stack tree, merge this PR into its base branch, then automatically restack all child branches.',
         'cmd.merge.when': 'When this PR is approved and ready to merge, but child PRs still need more work',
@@ -1316,9 +1316,9 @@ feat-2:              E'───F'   <span class="code-comment">(C, D removed; o
         'cmd.discover.when': '스택 PR을 만든 후, 또는 PR의 베이스 브랜치를 변경하여 새로운 스택을 구성할 때 사용하세요',
         'cmd.discover.what': '베이스 브랜치를 따라 하위 PR을 재귀적으로 찾고, 각 PR 본문의 메타데이터를 업데이트하며, 리스택이 필요한 항목을 알려줍니다',
 
-        'cmd.restack.desc': '이 PR의 최신 head를 기준으로 모든 직계 하위 브랜치를 리베이스합니다. 상위 PR에 새 커밋을 푸시한 후 사용하세요.',
+        'cmd.restack.desc': '전체 스택을 재귀적으로 리스택합니다 — 모든 하위 브랜치를 위상 순서대로 리베이스합니다. 상위 PR에 새 커밋을 푸시한 후 사용하세요.',
         'cmd.restack.when': '상위 PR에 새 커밋을 추가한 후, 또는 <code>st discover</code>에서 ⚠️ 표시가 나타날 때 사용하세요',
-        'cmd.restack.what': '각 하위 브랜치에 <code>git rebase --onto</code>를 실행하고 강제 푸시합니다. 리베이스 실패 시 충돌 해결 명령어를 안내합니다',
+        'cmd.restack.what': '스택을 자동 탐색한 후 모든 하위 브랜치에 위상 순서대로 <code>git rebase --onto</code>를 실행합니다. 충돌 시 해당 서브트리 탐색을 중단하고 해결 명령어를 안내합니다',
 
         'cmd.merge.desc': '스택 트리를 자동 탐색한 후, 이 PR을 베이스 브랜치에 머지하고 모든 하위 브랜치를 자동으로 리스택합니다.',
         'cmd.merge.when': '이 PR이 승인되어 머지할 준비가 됐지만, 하위 PR은 아직 작업이 필요할 때 사용하세요',
