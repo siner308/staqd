@@ -12,7 +12,6 @@
 **/stakt/** — like "stacked"
 
 Stacked PR merge queue powered by GitHub Actions and PR comments.
-No CLI to install. No SaaS dependency. One workflow file is all you need.
 
 ## Usage
 
@@ -62,8 +61,19 @@ That's it. Each workflow triggers only on its relevant event, keeping PR checks 
 
 ### With GitHub App (recommended for CI auto-trigger)
 
+`.github/workflows/staqd-auto-detect.yml`:
+
 ```yaml
-# staqd-auto-detect.yml
+name: Staqd Auto Detect
+
+on:
+  pull_request:
+    types: [opened, edited, closed]
+
+permissions:
+  pull-requests: write
+  issues: write
+
 jobs:
   staqd:
     uses: siner308/staqd/.github/workflows/staqd-auto-detect.yml@v1
@@ -71,8 +81,23 @@ jobs:
       app-id: ${{ vars.STAQD_APP_ID }}
     secrets:
       app-private-key: ${{ secrets.STAQD_APP_PRIVATE_KEY }}
+```
 
-# staqd-command.yml
+`.github/workflows/staqd-command.yml`:
+
+```yaml
+name: Staqd Command
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  checks: read
+
 jobs:
   staqd:
     uses: siner308/staqd/.github/workflows/staqd-command.yml@v1
@@ -82,7 +107,7 @@ jobs:
       app-private-key: ${{ secrets.STAQD_APP_PRIVATE_KEY }}
 ```
 
-> **Note:** The single-file `staqd.yml` workflow still works for backward compatibility, but may show skipped jobs in branch protection checks.
+> **Deprecation:** The single-file `staqd.yml` is deprecated. Use the two-file setup above.
 
 ### Reusable Workflow Inputs
 

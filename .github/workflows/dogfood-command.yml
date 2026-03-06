@@ -1,3 +1,4 @@
+# Dogfood: tests the composite action directly from this repo (uses: ./)
 name: Staqd Command (dogfood)
 
 on:
