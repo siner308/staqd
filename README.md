@@ -18,12 +18,32 @@ No CLI to install. No SaaS dependency. One workflow file is all you need.
 
 ### Basic
 
+Add a workflow file for each of the two events:
+
+`.github/workflows/staqd-auto-detect.yml` — runs on pull request events:
+
 ```yaml
-name: Staqd
+name: Staqd Auto Detect
 
 on:
   pull_request:
     types: [opened, edited, closed]
+
+permissions:
+  pull-requests: write
+  issues: write
+
+jobs:
+  staqd:
+    uses: siner308/staqd/.github/workflows/staqd-auto-detect.yml@v1
+```
+
+`.github/workflows/staqd-command.yml` — runs on PR comment commands:
+
+```yaml
+name: Staqd Command
+
+on:
   issue_comment:
     types: [created]
 
@@ -35,24 +55,45 @@ permissions:
 
 jobs:
   staqd:
-    uses: siner308/staqd/.github/workflows/staqd.yml@v1
+    uses: siner308/staqd/.github/workflows/staqd-command.yml@v1
 ```
 
-That's it. The reusable workflow handles everything internally: guide comments, base branch resolution, concurrency groups, and command execution.
+That's it. Each workflow triggers only on its relevant event, keeping PR checks clean and focused.
 
 ### With GitHub App (recommended for CI auto-trigger)
 
 ```yaml
+# staqd-auto-detect.yml
 jobs:
   staqd:
-    uses: siner308/staqd/.github/workflows/staqd.yml@v1
+    uses: siner308/staqd/.github/workflows/staqd-auto-detect.yml@v1
+    with:
+      app-id: ${{ vars.STAQD_APP_ID }}
+    secrets:
+      app-private-key: ${{ secrets.STAQD_APP_PRIVATE_KEY }}
+
+# staqd-command.yml
+jobs:
+  staqd:
+    uses: siner308/staqd/.github/workflows/staqd-command.yml@v1
     with:
       app-id: ${{ vars.STAQD_APP_ID }}
     secrets:
       app-private-key: ${{ secrets.STAQD_APP_PRIVATE_KEY }}
 ```
 
+> **Note:** The single-file `staqd.yml` workflow still works for backward compatibility, but may show skipped jobs in branch protection checks.
+
 ### Reusable Workflow Inputs
+
+**`staqd-auto-detect.yml`**
+
+| Input | Description | Required | Default |
+|-------|-------------|----------|---------|
+| `app-id` | GitHub App ID. Used with `app-private-key` to generate an installation token. | No | |
+| `runs-on` | Runner label for all jobs | No | `ubuntu-latest` |
+
+**`staqd-command.yml`**
 
 | Input | Description | Required | Default |
 |-------|-------------|----------|---------|

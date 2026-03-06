@@ -1,0 +1,33 @@
+name: Staqd Auto Detect
+
+on:
+  workflow_call:
+    inputs:
+      app-id:
+        description: 'GitHub App ID. Used with app-private-key to generate an installation token.'
+        type: string
+        required: false
+        default: ''
+      runs-on:
+        description: 'Runner label for all jobs (default: ubuntu-latest)'
+        type: string
+        required: false
+        default: 'ubuntu-latest'
+    secrets:
+      app-private-key:
+        description: 'GitHub App private key. Used with app-id to generate an installation token.'
+        required: false
+
+jobs:
+  # Guide comment — no concurrency needed (idempotent)
+  auto-detect:
+    runs-on: ${{ inputs.runs-on }}
+    permissions:
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: siner308/staqd@v1
+        with:
+          token: ${{ github.token }}
+          app-id: ${{ inputs.app-id }}
+          app-private-key: ${{ secrets.app-private-key }}

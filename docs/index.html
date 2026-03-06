@@ -987,18 +987,39 @@
   <section id="quickstart">
     <div class="container">
       <h2 id="quickstart-heading"><span data-i18n="quickstart.heading">Quick Start</span><a href="#quickstart-heading" class="anchor-link" aria-label="Link to this section">#</a></h2>
-      <p class="section-intro" data-i18n-html="quickstart.intro">Add this workflow to <code>.github/workflows/staqd.yml</code></p>
+      <p class="section-intro" data-i18n-html="quickstart.intro">Add a workflow file for each of the two events:</p>
 
+      <p style="margin-bottom: 0.5rem; font-weight: 600;"><code>.github/workflows/staqd-auto-detect.yml</code></p>
       <div class="code-block">
         <div class="code-header">
           <span class="code-lang">YAML</span>
           <button class="copy-btn" data-i18n="common.copy" onclick="copyCode(this)">Copy</button>
         </div>
-        <pre><code><span class="code-keyword">name:</span> Staqd
+        <pre><code><span class="code-keyword">name:</span> Staqd Auto Detect
 
 <span class="code-keyword">on:</span>
   <span class="code-property">pull_request:</span>
     <span class="code-property">types:</span> [opened, edited, closed]
+
+<span class="code-keyword">permissions:</span>
+  <span class="code-property">pull-requests:</span> write
+  <span class="code-property">issues:</span> write
+
+<span class="code-keyword">jobs:</span>
+  <span class="code-property">staqd:</span>
+    <span class="code-keyword">uses:</span> siner308/staqd/.github/workflows/staqd-auto-detect.yml@v1
+</code></pre>
+      </div>
+
+      <p style="margin-top: 1.5rem; margin-bottom: 0.5rem; font-weight: 600;"><code>.github/workflows/staqd-command.yml</code></p>
+      <div class="code-block">
+        <div class="code-header">
+          <span class="code-lang">YAML</span>
+          <button class="copy-btn" data-i18n="common.copy" onclick="copyCode(this)">Copy</button>
+        </div>
+        <pre><code><span class="code-keyword">name:</span> Staqd Command
+
+<span class="code-keyword">on:</span>
   <span class="code-property">issue_comment:</span>
     <span class="code-property">types:</span> [created]
 
@@ -1010,7 +1031,7 @@
 
 <span class="code-keyword">jobs:</span>
   <span class="code-property">staqd:</span>
-    <span class="code-keyword">uses:</span> siner308/staqd/.github/workflows/staqd.yml@v1
+    <span class="code-keyword">uses:</span> siner308/staqd/.github/workflows/staqd-command.yml@v1
 </code></pre>
       </div>
     </div>
@@ -1288,7 +1309,7 @@ feat-2:              E'───F'   <span class="code-comment">(C, D removed; o
         'features.justYamlDesc': 'One workflow file. Copy, commit, done. Stack metadata lives in PR body comments.',
 
         'quickstart.heading': 'Quick Start',
-        'quickstart.intro': 'Add this workflow to <code>.github/workflows/staqd.yml</code>',
+        'quickstart.intro': 'Add a workflow file for each of the two events:',
 
         'commands.heading': 'Commands',
         'commands.intro': 'Comment on a PR to trigger actions. All commands support the short alias <code>st</code> (e.g., <code>st merge</code>).',
@@ -1391,7 +1412,7 @@ feat-2:              E'───F'   <span class="code-comment">(C, D removed; o
         'features.justYamlDesc': '워크플로우 파일 하나만 추가하면 됩니다. 복사하고 커밋하면 준비 완료. 스택 메타데이터는 PR 본문에 저장됩니다.',
 
         'quickstart.heading': '빠른 시작',
-        'quickstart.intro': '<code>.github/workflows/staqd.yml</code>에 이 워크플로우를 추가하세요',
+        'quickstart.intro': '두 가지 이벤트에 대한 각각의 워크플로우 파일을 추가하세요:',
 
         'commands.heading': '명령어',
         'commands.intro': 'PR에 코멘트를 남겨 작업을 실행하세요. 모든 명령어는 단축 별칭 <code>st</code>를 지원합니다 (예: <code>st merge</code>).',
