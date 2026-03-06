@@ -1,5 +1,5 @@
 // Execute stack commands (help, restack, merge, merge-all).
-module.exports = async function command({ github, context, core, exec, command, force }) {
+module.exports = async function command({ github, context, core, exec, command, force, recursive = true }) {
   const { owner, repo } = context.repo;
   const prNumber = context.payload.issue.number;
 
@@ -382,7 +382,7 @@ module.exports = async function command({ github, context, core, exec, command, 
       '| `stack merge` (`st merge`) | Merge this PR, restack children |',
       '| `stack merge-all` (`st merge-all`) | Merge entire stack (requires approval) |',
       '| `stack merge-all --force` (`st merge-all --force`) | Skip approval check |',
-      '| `stack restack` (`st restack`) | Restack children only |',
+      '| `stack restack` (`st restack`) | Restack entire stack recursively |',
       '| `stack discover` (`st discover`) | Auto-discover stack tree from base branches |',
       '',
       `**Stack:** ${stack}`,
@@ -392,6 +392,105 @@ module.exports = async function command({ github, context, core, exec, command, 
 
   // ── restack ──
   if (command === 'restack') {
+    if (recursive) {
+      // Discover full stack tree first to ensure metadata is fresh
+      await runDiscover(prNumber);
+      const { meta: freshMeta, pr: freshPr } = await getStackMeta(prNumber);
+      const freshChildren = freshMeta?.children || [];
+
+      if (!freshChildren.length) {
+        await post(prNumber, 'No children to restack.');
+        return;
+      }
+
+      // Recursive restack: process tree in topological order (parent before children)
+      const allResults = [];
+      const visited = new Set();
+
+      async function recursiveRestack(parentPrNum, parentBranch, parentSkipSha) {
+        if (visited.has(parentPrNum)) return;
+        visited.add(parentPrNum);
+
+        const { meta: pMeta } = await getStackMeta(parentPrNum);
+        const pChildren = pMeta?.children || [];
+        if (!pChildren.length) return;
+
+        for (const child of pChildren) {
+          const oldTip = await getOldTip(child.branch);
+          if (!oldTip) {
+            allResults.push({ ...child, status: 'missing', parent: parentBranch });
+            continue;
+          }
+
+          await ensureLocalBranch(child.branch);
+          const r = await doRestack(child.branch, `origin/${parentBranch}`, parentSkipSha);
+
+          if (r.ok) {
+            allResults.push({ ...child, status: 'restacked', oldTip, parent: parentBranch });
+            await exec.exec('git', ['fetch', 'origin']);
+            // Recursively restack this child's children, using old tip as skip sha
+            await recursiveRestack(child.pr, child.branch, oldTip);
+          } else {
+            allResults.push({
+              ...child, status: 'conflict', oldTip, error: r.error, parent: parentBranch,
+            });
+            // Stop recursing into this subtree on conflict to avoid cascading failures
+          }
+        }
+      }
+
+      await exec.exec('git', ['fetch', 'origin']);
+      await recursiveRestack(prNumber, freshPr.head.ref, freshPr.head.sha);
+
+      const ok = allResults.every(r => r.status === 'restacked');
+      const label = { restacked: 'Restacked', conflict: 'Conflict', missing: 'Branch not found' };
+      const rows = allResults.map(
+        r => `| \`${r.branch}\` | #${r.pr} | ${label[r.status] || r.status} | \`${r.parent}\` |`
+      );
+
+      const conflicting = allResults.filter(r => r.status === 'conflict' && r.oldTip);
+      let manual = '';
+      if (conflicting.length) {
+        const cmds = ['git fetch origin', ''];
+        for (const r of conflicting) {
+          cmds.push(`# ${r.branch} (PR #${r.pr})`);
+          cmds.push(
+            `git rebase --onto origin/${r.parent} ${r.oldTip.substring(0, 8)} ${r.branch}`
+          );
+          cmds.push('# resolve conflicts if any, then:');
+          cmds.push(
+            `git push --force-with-lease origin ${r.branch}`
+          );
+          cmds.push('');
+        }
+        manual = [
+          '',
+          '<details><summary>Manual restack commands</summary>',
+          '',
+          '```bash',
+          ...cmds,
+          '```',
+          '</details>',
+        ].join('\n');
+      }
+
+      await post(prNumber, [
+        ok ? '### Restack: Complete' : '### Restack: Action Needed',
+        '',
+        `Restacked **${allResults.filter(r => r.status === 'restacked').length}/${allResults.length}** branch(es) across the stack.`,
+        '',
+        '| Branch | PR | Status | Parent |',
+        '|--------|-----|--------|--------|',
+        ...rows,
+        manual,
+        ...(ok ? [] : ['', '> ⚠️ Some branches had conflicts. Fix conflicts and re-run `st restack`.']),
+      ].join('\n'));
+
+      if (!ok) core.setFailed('Restack had failures');
+      return;
+    }
+
+    // Non-recursive: restack direct children only
     if (!children.length) {
       await post(prNumber, 'No children to restack.');
       return;
