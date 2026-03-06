@@ -405,13 +405,15 @@ module.exports = async function command({ github, context, core, exec, command, 
 
       // Recursive restack: process tree in topological order (parent before children)
       const allResults = [];
+      const visited = new Set();
 
       async function recursiveRestack(parentPrNum, parentBranch, parentSkipSha) {
+        if (visited.has(parentPrNum)) return;
+        visited.add(parentPrNum);
+
         const { meta: pMeta } = await getStackMeta(parentPrNum);
         const pChildren = pMeta?.children || [];
         if (!pChildren.length) return;
-
-        await exec.exec('git', ['fetch', 'origin']);
 
         for (const child of pChildren) {
           const oldTip = await getOldTip(child.branch);
@@ -425,6 +427,7 @@ module.exports = async function command({ github, context, core, exec, command, 
 
           if (r.ok) {
             allResults.push({ ...child, status: 'restacked', oldTip, parent: parentBranch });
+            await exec.exec('git', ['fetch', 'origin']);
             // Recursively restack this child's children, using old tip as skip sha
             await recursiveRestack(child.pr, child.branch, oldTip);
           } else {
@@ -436,12 +439,40 @@ module.exports = async function command({ github, context, core, exec, command, 
         }
       }
 
+      await exec.exec('git', ['fetch', 'origin']);
       await recursiveRestack(prNumber, freshPr.head.ref, freshPr.head.sha);
 
       const ok = allResults.every(r => r.status === 'restacked');
+      const label = { restacked: 'Restacked', conflict: 'Conflict', missing: 'Branch not found' };
       const rows = allResults.map(
-        r => `| \`${r.branch}\` | #${r.pr} | ${r.status === 'restacked' ? 'Restacked' : r.status === 'conflict' ? 'Conflict' : r.status === 'missing' ? 'Branch not found' : r.status} | \`${r.parent}\` |`
+        r => `| \`${r.branch}\` | #${r.pr} | ${label[r.status] || r.status} | \`${r.parent}\` |`
       );
+
+      const conflicting = allResults.filter(r => r.status === 'conflict' && r.oldTip);
+      let manual = '';
+      if (conflicting.length) {
+        const cmds = ['git fetch origin', ''];
+        for (const r of conflicting) {
+          cmds.push(`# ${r.branch} (PR #${r.pr})`);
+          cmds.push(
+            `git rebase --onto origin/${r.parent} ${r.oldTip.substring(0, 8)} ${r.branch}`
+          );
+          cmds.push('# resolve conflicts if any, then:');
+          cmds.push(
+            `git push --force-with-lease origin ${r.branch}`
+          );
+          cmds.push('');
+        }
+        manual = [
+          '',
+          '<details><summary>Manual restack commands</summary>',
+          '',
+          '```bash',
+          ...cmds,
+          '```',
+          '</details>',
+        ].join('\n');
+      }
 
       await post(prNumber, [
         ok ? '### Restack: Complete' : '### Restack: Action Needed',
@@ -451,6 +482,7 @@ module.exports = async function command({ github, context, core, exec, command, 
         '| Branch | PR | Status | Parent |',
         '|--------|-----|--------|--------|',
         ...rows,
+        manual,
         ...(ok ? [] : ['', '> ⚠️ Some branches had conflicts. Fix conflicts and re-run `st restack`.']),
       ].join('\n'));
 
