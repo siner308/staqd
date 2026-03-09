@@ -185,8 +185,14 @@ module.exports = async function command({ github, context, core, exec, command, 
   /**
    * Phase 1: pre-merge rebase — move children onto parent HEAD before merge.
    * Conflicts surface here (parent is still alive, context is clear).
+   *
+   * @param {Array} children - direct children to pre-restack
+   * @param {string} parentBranch - parent branch name
+   * @param {Map} [mergeBases] - pre-computed merge-bases (childBranch → SHA).
+   *   When provided, uses these instead of computing merge-base at call time.
+   *   Required for merge-all where prior rebasing invalidates live merge-base.
    */
-  async function preRestack(children, parentBranch) {
+  async function preRestack(children, parentBranch, mergeBases = null) {
     await exec.exec('git', ['fetch', 'origin']);
     const results = [];
 
@@ -199,19 +205,23 @@ module.exports = async function command({ github, context, core, exec, command, 
 
       await ensureLocalBranch(child.branch);
 
-      // Find merge-base to replay only child's unique commits
+      // Use pre-computed merge-base if available, otherwise compute live
       let mergeBase;
-      try {
-        const { stdout } = await exec.getExecOutput('git', [
-          'merge-base', `origin/${parentBranch}`, `origin/${child.branch}`,
-        ]);
-        mergeBase = stdout.trim();
-      } catch {
-        results.push({
-          ...child, status: 'conflict', oldTip,
-          error: 'Could not find merge-base',
-        });
-        continue;
+      if (mergeBases && mergeBases.has(child.branch)) {
+        mergeBase = mergeBases.get(child.branch);
+      } else {
+        try {
+          const { stdout } = await exec.getExecOutput('git', [
+            'merge-base', `origin/${parentBranch}`, `origin/${child.branch}`,
+          ]);
+          mergeBase = stdout.trim();
+        } catch {
+          results.push({
+            ...child, status: 'conflict', oldTip,
+            error: 'Could not find merge-base',
+          });
+          continue;
+        }
       }
 
       const r = await doRestack(child.branch, `origin/${parentBranch}`, mergeBase);
@@ -225,6 +235,65 @@ module.exports = async function command({ github, context, core, exec, command, 
     }
 
     return results;
+  }
+
+  /**
+   * Compute merge-bases for the entire stack tree before any rebasing.
+   * Must be called while all branches still have their original history.
+   * Returns a Map of childBranch → merge-base SHA.
+   */
+  async function computeMergeBases(rootPrNum, rootBranch) {
+    const bases = new Map();
+
+    async function walk(parentBranch, parentPrNum) {
+      const { meta } = await getStackMeta(parentPrNum);
+      const children = meta?.children || [];
+
+      for (const child of children) {
+        try {
+          const { stdout } = await exec.getExecOutput('git', [
+            'merge-base', `origin/${parentBranch}`, `origin/${child.branch}`,
+          ]);
+          bases.set(child.branch, stdout.trim());
+        } catch {
+          // Will surface as 'conflict' during preRestack
+        }
+        await walk(child.branch, child.pr);
+      }
+    }
+
+    await walk(rootBranch, rootPrNum);
+    return bases;
+  }
+
+  /**
+   * Phase 1 for the entire tree: pre-restack all nodes top-down.
+   * Must use pre-computed merge-bases since each rebase changes history.
+   */
+  async function preRestackTree(rootPrNum, rootBranch, mergeBases) {
+    const results = [];
+
+    async function walk(parentPrNum, parentBranch) {
+      const { meta } = await getStackMeta(parentPrNum);
+      const children = meta?.children || [];
+      if (!children.length) return true;
+
+      const levelResults = await preRestack(children, parentBranch, mergeBases);
+      results.push(...levelResults);
+
+      const levelOk = levelResults.every(r => r.status === 'pre-restacked');
+      if (!levelOk) return false;
+
+      // Recurse top-down: parent was just rebased, children use pre-computed bases
+      for (const child of children) {
+        const ok = await walk(child.pr, child.branch);
+        if (!ok) return false;
+      }
+      return true;
+    }
+
+    const ok = await walk(rootPrNum, rootBranch);
+    return { ok, results };
   }
 
   function formatPreRestackFailure(results, parentBranch) {
@@ -745,15 +814,24 @@ module.exports = async function command({ github, context, core, exec, command, 
       return;
     }
 
-    // ── Phase 1 for root: pre-merge rebase children onto root HEAD ──
-    const preResults = await preRestack(freshChildren, freshPr.head.ref);
-    const preOk = preResults.every(r => r.status === 'pre-restacked');
+    // ── Phase 0: compute all merge-bases before any rebasing ──
+    // After any rebase, git merge-base between rebased and original branches
+    // returns incorrect results. Pre-compute while history is intact.
+    await exec.exec('git', ['fetch', 'origin']);
+    const mergeBases = await computeMergeBases(prNumber, freshPr.head.ref);
+
+    // ── Phase 1: pre-restack entire tree top-down ──
+    // Each level rebases children onto parent HEAD using pre-computed merge-bases.
+    // Conflicts surface here where parent context is still clear.
+    const { ok: preOk, results: preResults } = await preRestackTree(
+      prNumber, freshPr.head.ref, mergeBases
+    );
 
     if (!preOk) {
       await post(prNumber, [
         '### Pre-merge restack failed',
         '',
-        'Children must be cleanly rebased onto the parent before merge-all can proceed.',
+        'All branches must be cleanly rebased before merge-all can proceed.',
         '',
         formatPreRestackFailure(preResults, freshPr.head.ref),
       ].join('\n'));
@@ -761,7 +839,7 @@ module.exports = async function command({ github, context, core, exec, command, 
       return;
     }
 
-    // ── Phase 2 for root: merge root ──
+    // ── Phase 2: merge root ──
     const first = await tryMerge(prNumber, freshMergeMethod);
     if (!first.ok) {
       await post(
@@ -772,31 +850,35 @@ module.exports = async function command({ github, context, core, exec, command, 
       return;
     }
 
-    // Recursively merge children → grandchildren in DFS order
-    // Each level applies 2-phase rebase before merging.
+    // ── Phase 2 continued: restack + merge children in DFS order ──
+    // After Phase 1, each child sits on its parent's HEAD.
+    // Phase 2 uses the parent's Phase 1 tip as skip SHA to rebase onto main.
+    // Since squash merge produces the same tree as parent HEAD, this is conflict-free.
     const results = [];
     let mergeOrder = 1; // #1 (root) is order 1
 
-    async function mergeChildren(childrenList, parentSkipSha) {
+    async function mergeChildren(childrenList, parentPhase1Tip) {
       for (const child of childrenList) {
         await exec.exec('git', ['fetch', 'origin']);
 
         const order = ++mergeOrder;
-        const oldTip = await getOldTip(child.branch);
-        if (!oldTip) {
+        // This is the Phase 1 tip (child was pre-restacked onto parent in Phase 1)
+        const phase1Tip = await getOldTip(child.branch);
+        if (!phase1Tip) {
           results.push({ ...child, status: 'missing', order });
           continue;
         }
 
         await ensureLocalBranch(child.branch);
 
-        // Phase 2: restack child onto main (conflict-free after Phase 1)
+        // Phase 2: rebase child onto main using parent's Phase 1 tip as skip.
+        // parentPhase1Tip is in child's history (child was rebased onto parent in Phase 1).
         const rs = await doRestack(
-          child.branch, `origin/${freshBaseBranch}`, parentSkipSha
+          child.branch, `origin/${freshBaseBranch}`, parentPhase1Tip
         );
         if (!rs.ok) {
           results.push({
-            ...child, status: 'conflict', oldTip, error: rs.error, order,
+            ...child, status: 'conflict', oldTip: phase1Tip, error: rs.error, order,
           });
           continue;
         }
@@ -807,25 +889,6 @@ module.exports = async function command({ github, context, core, exec, command, 
           })
           .catch(() => {});
 
-        // Phase 1 for child's children: pre-restack grandchildren before merging child
-        const { meta: childMeta } = await getStackMeta(child.pr);
-        const grandchildren = childMeta?.children || [];
-
-        if (grandchildren.length) {
-          const gpResults = await preRestack(grandchildren, child.branch);
-          const gpOk = gpResults.every(r => r.status === 'pre-restacked');
-          if (!gpOk) {
-            results.push({
-              ...child, status: 'pre-restack_failed', oldTip, order,
-              error: 'Grandchildren could not be pre-restacked',
-            });
-            continue;
-          }
-        }
-
-        // Save child head SHA for Phase 2 of grandchildren
-        const childHeadSha = await getOldTip(child.branch);
-
         console.log(
           `Waiting for CI on #${child.pr} (${child.branch})...`
         );
@@ -835,18 +898,21 @@ module.exports = async function command({ github, context, core, exec, command, 
           results.push({
             ...child,
             status: 'merge_failed',
-            oldTip,
+            oldTip: phase1Tip,
             error: merged.error,
             order,
           });
           continue;
         }
 
-        results.push({ ...child, status: 'merged', oldTip, order });
+        results.push({ ...child, status: 'merged', oldTip: phase1Tip, order });
 
-        // Phase 2 for grandchildren: restack onto main + recurse
-        if (grandchildren.length) {
-          await mergeChildren(grandchildren, childHeadSha);
+        // Recurse: use this child's Phase 1 tip as skip for grandchildren.
+        // phase1Tip is in grandchildren's history because Phase 1 rebased them
+        // onto this child's HEAD (which was phase1Tip at that time).
+        const { meta: childMeta } = await getStackMeta(child.pr);
+        if (childMeta?.children?.length) {
+          await mergeChildren(childMeta.children, phase1Tip);
         }
 
         await deleteBranch(child.branch);
@@ -871,7 +937,6 @@ module.exports = async function command({ github, context, core, exec, command, 
         merged: 'Merged',
         conflict: 'Conflict',
         merge_failed: `Merge failed: ${r.error || ''}`,
-        'pre-restack_failed': 'Pre-restack failed',
         missing: 'Branch not found',
         skipped: 'Skipped',
       }[r.status] || r.status;
