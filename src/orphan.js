@@ -51,6 +51,12 @@ module.exports = async function orphan({ github, context }) {
       continue;
     }
 
+    // Embed parent's head SHA so the restack command knows where to
+    // split the child's own commits from the (now squash-merged) parent.
+    // Without this, `st restack` cannot rebase the child itself — it
+    // only restacks the child's children.
+    const orphanMeta = JSON.stringify({ parentHeadSha: pr.head.sha });
+
     await github.rest.issues
       .createComment({
         owner, repo, issue_number: child.pr,
@@ -60,6 +66,8 @@ module.exports = async function orphan({ github, context }) {
           '',
           'Auto-restack will be attempted shortly.',
           'If it does not trigger, run `st restack` manually.',
+          '',
+          `<!-- orphan-rebase:${orphanMeta} -->`,
         ].join('\n'),
       })
       .catch(() => {});
