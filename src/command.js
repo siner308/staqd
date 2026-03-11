@@ -550,6 +550,67 @@ module.exports = async function command({ github, context, core, exec, command, 
 
   // ── restack ──
   if (command === 'restack') {
+    // Orphan rebase: if the parent was merged via GitHub UI (not st merge),
+    // orphan.js embeds <!-- orphan-rebase:{"parentHeadSha":"..."} --> in a
+    // comment.  The parentHeadSha marks where the child's own commits begin,
+    // allowing us to rebase the child itself onto its (new) base branch,
+    // stripping the already-squash-merged parent commits.
+    const orphanPat = /<!-- orphan-rebase:([\s\S]*?) -->/;
+    let selfRebased = false;
+    {
+      const { data: prComments } = await github.rest.issues.listComments({
+        owner, repo, issue_number: prNumber,
+      });
+      // Find the most recent orphan-rebase metadata
+      let orphanMeta = null;
+      for (const c of prComments) {
+        const om = (c.body || '').match(orphanPat);
+        if (om) {
+          try { orphanMeta = JSON.parse(om[1]); } catch {}
+        }
+      }
+      if (orphanMeta?.parentHeadSha) {
+        const { data: thisPr } = await github.rest.pulls.get({
+          owner, repo, pull_number: prNumber,
+        });
+        await exec.exec('git', ['fetch', 'origin']);
+        await ensureLocalBranch(thisPr.head.ref);
+        const r = await doRestack(
+          thisPr.head.ref, `origin/${thisPr.base.ref}`, orphanMeta.parentHeadSha
+        );
+        if (r.ok) {
+          selfRebased = true;
+          await exec.exec('git', ['fetch', 'origin']);
+          // Clean up: delete the orphan-rebase comment to prevent re-runs
+          for (const c of prComments) {
+            if (orphanPat.test(c.body || '')) {
+              await github.rest.issues.deleteComment({
+                owner, repo, comment_id: c.id,
+              }).catch(() => {});
+            }
+          }
+        } else {
+          await post(prNumber, [
+            '### Restack: Action Needed',
+            '',
+            `Failed to rebase \`${thisPr.head.ref}\` onto \`${thisPr.base.ref}\` after parent merge.`,
+            '',
+            '<details><summary>Manual restack command</summary>',
+            '',
+            '```bash',
+            'git fetch origin',
+            `git rebase --onto origin/${thisPr.base.ref} ${orphanMeta.parentHeadSha.substring(0, 8)} ${thisPr.head.ref}`,
+            '# resolve conflicts, then:',
+            `git push --force-with-lease origin ${thisPr.head.ref}`,
+            '```',
+            '</details>',
+          ].join('\n'));
+          core.setFailed('Orphan rebase had conflicts');
+          return;
+        }
+      }
+    }
+
     if (recursive) {
       // Discover full stack tree first to ensure metadata is fresh
       await runDiscover(prNumber);
@@ -557,7 +618,15 @@ module.exports = async function command({ github, context, core, exec, command, 
       const freshChildren = freshMeta?.children || [];
 
       if (!freshChildren.length) {
-        await post(prNumber, 'No children to restack.');
+        if (selfRebased) {
+          await post(prNumber, [
+            '### Restack: Complete',
+            '',
+            `Rebased \`${freshPr.head.ref}\` onto \`${freshPr.base.ref}\` after parent merge.`,
+          ].join('\n'));
+        } else {
+          await post(prNumber, 'No children to restack.');
+        }
         return;
       }
 
@@ -635,6 +704,9 @@ module.exports = async function command({ github, context, core, exec, command, 
       await post(prNumber, [
         ok ? '### Restack: Complete' : '### Restack: Action Needed',
         '',
+        ...(selfRebased
+          ? [`Rebased \`${freshPr.head.ref}\` onto \`${freshPr.base.ref}\` after parent merge.`, '']
+          : []),
         `Restacked **${allResults.filter(r => r.status === 'restacked').length}/${allResults.length}** branch(es) across the stack.`,
         '',
         '| Branch | PR | Status | Parent |',
@@ -650,7 +722,15 @@ module.exports = async function command({ github, context, core, exec, command, 
 
     // Non-recursive: restack direct children only
     if (!children.length) {
-      await post(prNumber, 'No children to restack.');
+      if (selfRebased) {
+        await post(prNumber, [
+          '### Restack: Complete',
+          '',
+          `Rebased \`${pr.head.ref}\` onto \`${baseBranch}\` after parent merge.`,
+        ].join('\n'));
+      } else {
+        await post(prNumber, 'No children to restack.');
+      }
       return;
     }
 
