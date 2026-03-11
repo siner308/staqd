@@ -25,9 +25,18 @@ module.exports = async function orphan({ github, context }) {
         body: [
           `#${pr.number} (\`${pr.head.ref}\`) was merged.`,
           `Base branch updated to \`${baseBranch}\`.`,
-          '',
-          'Run `st restack` if your branch needs rebasing.',
         ].join('\n'),
+      })
+      .catch(() => {});
+
+    // Post `st restack` command to trigger the command workflow.
+    // With a GitHub App token this fires an issue_comment event that
+    // auto-restacks the child.  With GITHUB_TOKEN the event won't fire
+    // (GitHub limitation), but the comment remains as a manual hint.
+    await github.rest.issues
+      .createComment({
+        owner, repo, issue_number: child.pr,
+        body: 'st restack',
       })
       .catch(() => {});
   }
