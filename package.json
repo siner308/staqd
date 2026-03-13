@@ -1,0 +1,24 @@
+{
+  "name": "staqd",
+  "version": "1.1.0",
+  "description": "Stacked PR merge queue powered by GitHub Actions and PR comments.",
+  "license": "MIT",
+  "author": "siner308",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/siner308/staqd.git"
+  },
+  "bin": {
+    "st": "./bin/st.mjs"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "bin/",
+    "cli/",
+    "src/",
+    "action.yml"
+  ]
+}
