@@ -14,7 +14,7 @@ export async function submit(flags) {
   // Push current branch first
   console.log(`Pushing ${current}...`);
   if (!dryRun) {
-    git.exec(`git push -u origin ${current}`);
+    git.pushUpstream(current);
   }
 
   // Discover stack from PRs
@@ -71,7 +71,7 @@ export async function submit(flags) {
       }
 
       try {
-        git.exec(`git push --force-with-lease origin ${node.branch}`);
+        git.pushForce(node.branch);
         results.push({ branch: node.branch, pr: node.pr, status: 'pushed' });
       } catch {
         results.push({ branch: node.branch, pr: node.pr, status: 'push-failed' });

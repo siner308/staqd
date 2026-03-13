@@ -70,12 +70,8 @@ export async function sync(flags) {
         if (dryRun) {
           results.push({ branch, status: 'would-prune' });
         } else {
-          try {
-            git.exec(`git branch -D ${branch}`);
-            results.push({ branch, status: 'pruned' });
-          } catch {
-            results.push({ branch, status: 'prune-failed' });
-          }
+          const deleted = git.deleteBranch(branch);
+          results.push({ branch, status: deleted !== null ? 'pruned' : 'prune-failed' });
         }
       }
     }

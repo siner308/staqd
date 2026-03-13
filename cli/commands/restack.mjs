@@ -63,13 +63,11 @@ export async function restack(flags) {
     }
 
     // Ensure local branch exists
-    git.exec(`git branch ${node.branch} origin/${node.branch} 2>/dev/null || true`, { silent: true });
+    git.ensureLocalBranch(node.branch);
 
     const r = git.rebaseOnto(parentRef, mb, node.branch);
     if (r.ok) {
       git.pushForce(node.branch);
-      // Re-fetch so subsequent children see updated refs
-      git.fetch();
       results.push({ branch: node.branch, pr: node.pr, status: 'restacked', parent: parent.branch });
     } else {
       results.push({ branch: node.branch, pr: node.pr, status: 'conflict', parent: parent.branch, error: r.error });

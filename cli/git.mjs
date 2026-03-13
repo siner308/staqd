@@ -1,105 +1,112 @@
 // Git and gh CLI helpers — no external dependencies.
 
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 
 // ── Shell execution ──
 
-export function exec(cmd, { silent = false } = {}) {
+function run(cmd, args, { silent = false } = {}) {
   try {
-    return execSync(cmd, {
+    return execFileSync(cmd, args, {
       encoding: 'utf-8',
       stdio: silent ? 'pipe' : ['pipe', 'pipe', 'pipe'],
     }).trim();
   } catch (e) {
     if (silent) return null;
-    throw new Error(`Command failed: ${cmd}\n${e.stderr || e.message}`);
+    throw new Error(`Command failed: ${cmd} ${args.join(' ')}\n${e.stderr || e.message}`);
   }
 }
 
 // ── Git helpers ──
 
 export function currentBranch() {
-  return exec('git symbolic-ref --short HEAD', { silent: true });
+  return run('git', ['symbolic-ref', '--short', 'HEAD'], { silent: true });
 }
 
 export function defaultBranch() {
-  const ref = exec('git symbolic-ref refs/remotes/origin/HEAD', { silent: true });
+  const ref = run('git', ['symbolic-ref', 'refs/remotes/origin/HEAD'], { silent: true });
   if (ref) return ref.replace('refs/remotes/origin/', '');
   // fallback: try main, then master
-  const branches = exec('git branch -r', { silent: true }) || '';
+  const branches = run('git', ['branch', '-r'], { silent: true }) || '';
   if (branches.includes('origin/main')) return 'main';
   if (branches.includes('origin/master')) return 'master';
   return 'main';
 }
 
 export function isClean() {
-  try {
-    execSync('git diff --quiet && git diff --cached --quiet', {
-      encoding: 'utf-8',
-      stdio: 'pipe',
-      shell: true,
-    });
-    return true;
-  } catch {
-    return false;
-  }
+  const diff = run('git', ['diff', '--quiet'], { silent: true });
+  if (diff === null) return false;
+  const cached = run('git', ['diff', '--cached', '--quiet'], { silent: true });
+  return cached !== null;
 }
 
 export function fetch() {
-  exec('git fetch --prune origin');
+  run('git', ['fetch', '--prune', 'origin']);
 }
 
 export function localBranches() {
-  const out = exec('git branch --format="%(refname:short)"', { silent: true });
+  const out = run('git', ['branch', '--format=%(refname:short)'], { silent: true });
   return out ? out.split('\n').filter(Boolean) : [];
 }
 
 export function remoteSha(branch) {
-  return exec(`git rev-parse origin/${branch}`, { silent: true });
+  return run('git', ['rev-parse', `origin/${branch}`], { silent: true });
 }
 
 export function localSha(branch) {
-  return exec(`git rev-parse ${branch}`, { silent: true });
+  return run('git', ['rev-parse', branch], { silent: true });
 }
 
 export function mergeBase(a, b) {
-  return exec(`git merge-base ${a} ${b}`, { silent: true });
+  return run('git', ['merge-base', a, b], { silent: true });
 }
 
 export function rebaseOnto(onto, skip, branch) {
   try {
-    execSync(`git rebase --onto ${onto} ${skip} ${branch}`, {
+    execFileSync('git', ['rebase', '--onto', onto, skip, branch], {
       encoding: 'utf-8',
       stdio: 'pipe',
     });
     return { ok: true };
   } catch (e) {
-    try { execSync('git rebase --abort', { stdio: 'pipe' }); } catch {}
+    try { execFileSync('git', ['rebase', '--abort'], { stdio: 'pipe' }); } catch {}
     return { ok: false, error: e.stderr || e.message };
   }
 }
 
+export function pushUpstream(branch) {
+  run('git', ['push', '-u', 'origin', branch]);
+}
+
 export function pushForce(branch) {
-  exec(`git push --force-with-lease origin ${branch}`);
+  run('git', ['push', '--force-with-lease', 'origin', branch]);
 }
 
 export function branchForceUpdate(branch, ref) {
-  exec(`git branch -f ${branch} ${ref}`);
+  run('git', ['branch', '-f', branch, ref]);
 }
 
 export function resetHard(ref) {
-  exec(`git reset --hard ${ref}`);
+  run('git', ['reset', '--hard', ref]);
 }
 
 export function checkout(branch) {
-  exec(`git checkout ${branch}`);
+  run('git', ['checkout', branch]);
+}
+
+export function ensureLocalBranch(branch) {
+  run('git', ['branch', branch, `origin/${branch}`], { silent: true });
+}
+
+export function deleteBranch(branch) {
+  run('git', ['branch', '-D', branch], { silent: true });
 }
 
 // ── gh CLI helpers ──
 
 export function ghPrList() {
-  const out = exec(
-    'gh pr list --author @me --state open --json number,headRefName,baseRefName,title,url',
+  const out = run(
+    'gh', ['pr', 'list', '--author', '@me', '--state', 'open',
+           '--json', 'number,headRefName,baseRefName,title,url'],
     { silent: true },
   );
   if (!out) return [];
@@ -107,8 +114,9 @@ export function ghPrList() {
 }
 
 export function ghPrView(number) {
-  const out = exec(
-    `gh pr view ${number} --json number,headRefName,baseRefName,title,body,url`,
+  const out = run(
+    'gh', ['pr', 'view', String(number),
+           '--json', 'number,headRefName,baseRefName,title,body,url'],
     { silent: true },
   );
   if (!out) return null;
@@ -116,17 +124,17 @@ export function ghPrView(number) {
 }
 
 export function ghPrCreate(head, base, title) {
-  const out = exec(
-    `gh pr create --base ${base} --head ${head} --title ${JSON.stringify(title)} --fill`,
+  const out = run(
+    'gh', ['pr', 'create', '--base', base, '--head', head, '--title', title, '--fill'],
     { silent: true },
   );
   return out; // URL of created PR
 }
 
 export function ghPrEditBase(number, base) {
-  exec(`gh pr edit ${number} --base ${base}`, { silent: true });
+  run('gh', ['pr', 'edit', String(number), '--base', base], { silent: true });
 }
 
 export function ghPrComment(number, body) {
-  exec(`gh pr comment ${number} --body ${JSON.stringify(body)}`, { silent: true });
+  run('gh', ['pr', 'comment', String(number), '--body', body], { silent: true });
 }
