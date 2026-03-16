@@ -20,5 +20,12 @@
     "cli/",
     "src/",
     "action.yml"
-  ]
+  ],
+  "scripts": {
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "eslint": "^9",
+    "eslint-plugin-security": "^3"
+  }
 }
