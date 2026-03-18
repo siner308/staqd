@@ -43,7 +43,7 @@ runs:
       with:
         github-token: ${{ steps.app-token.outputs.token || inputs.token }}
         script: |
-          const guide = require(`${process.env.ACTION_PATH}/src/guide.js`);
+          const guide = require(`${process.env.ACTION_PATH}/src/guide.cjs`);
           await guide({ github, context });
 
     # ── PR merged: update orphaned children ──
@@ -55,7 +55,7 @@ runs:
       with:
         github-token: ${{ steps.app-token.outputs.token || inputs.token }}
         script: |
-          const orphan = require(`${process.env.ACTION_PATH}/src/orphan.js`);
+          const orphan = require(`${process.env.ACTION_PATH}/src/orphan.cjs`);
           await orphan({ github, context });
 
     # ── Comment: parse stack command ──
@@ -115,7 +115,7 @@ runs:
       with:
         github-token: ${{ steps.app-token.outputs.token || inputs.token }}
         script: |
-          const command = require(`${process.env.ACTION_PATH}/src/command.js`);
+          const command = require(`${process.env.ACTION_PATH}/src/command.cjs`);
           await command({
             github, context, core, exec,
             command: process.env.COMMAND,
