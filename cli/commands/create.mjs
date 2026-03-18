@@ -1,6 +1,5 @@
 // st create — Create a new branch and auto-track it.
 
-import { execFileSync } from 'node:child_process';
 import * as git from '../git.mjs';
 
 export function create(flags) {
@@ -20,7 +19,7 @@ export function create(flags) {
   }
 
   // Create and checkout new branch
-  execFileSync('git', ['checkout', '-b', name], { encoding: 'utf-8', stdio: 'pipe' });
+  git.checkoutNew(name);
 
   // Auto-track with current branch as parent
   git.setTrackedParent(name, current);

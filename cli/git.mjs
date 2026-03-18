@@ -98,6 +98,10 @@ export function checkout(branch) {
   run('git', ['checkout', branch]);
 }
 
+export function checkoutNew(branch) {
+  run('git', ['checkout', '-b', branch]);
+}
+
 export function ensureLocalBranch(branch) {
   run('git', ['branch', branch, `origin/${branch}`], { silent: true });
 }
@@ -127,7 +131,8 @@ export function listTrackedBranches() {
     const spaceIdx = line.indexOf(' ');
     const key = line.slice(0, spaceIdx);
     const parent = line.slice(spaceIdx + 1);
-    const branch = key.replace(/^branch\./, '').replace(/\.staqd-parent$/, '');
+    const match = key.match(/^branch\.(.+)\.staqd-parent$/);
+    const branch = match ? match[1] : key;
     return { branch, parent };
   });
 }
