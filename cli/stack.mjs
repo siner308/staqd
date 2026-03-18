@@ -8,7 +8,6 @@ import * as git from './git.mjs';
  * where node = { branch, pr, base, title, url, children: node[] }
  */
 export function buildStackTree(prs) {
-  const defBranch = git.defaultBranch();
   const byHead = new Map();
 
   for (const pr of prs) {
@@ -41,16 +40,13 @@ export function buildStackTree(prs) {
  * Returns the root node of that stack, or null.
  */
 export function findStackFor(branch, roots, nodes) {
-  // If branch is a root
-  for (const root of roots) {
-    if (containsBranch(root, branch)) return root;
+  let node = nodes.get(branch);
+  if (!node) return null;
+  // Walk up via base to find the stack root
+  while (nodes.has(node.base)) {
+    node = nodes.get(node.base);
   }
-  return null;
-}
-
-function containsBranch(node, branch) {
-  if (node.branch === branch) return true;
-  return node.children.some(c => containsBranch(c, branch));
+  return node;
 }
 
 /**

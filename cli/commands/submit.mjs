@@ -126,16 +126,24 @@ export async function submit(flags) {
 function detectBase(branch, prs) {
   const defBranch = git.defaultBranch();
 
-  // Check if any PR branch is the parent (current branch was created from it)
+  // Collect all PR branches that are ancestors of the current branch
+  let best = null;
+  let bestDistance = Infinity;
+
   for (const pr of prs) {
     const mb = git.mergeBase(pr.headRefName, branch);
     const prSha = git.localSha(pr.headRefName) || git.remoteSha(pr.headRefName);
     if (mb && prSha && mb === prSha) {
-      return pr.headRefName;
+      // Count commits between this ancestor and the branch to find the closest one
+      const distance = git.commitDistance(prSha, branch);
+      if (distance < bestDistance) {
+        best = pr.headRefName;
+        bestDistance = distance;
+      }
     }
   }
 
-  return defBranch;
+  return best || defBranch;
 }
 
 function findParent(node, root) {

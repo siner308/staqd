@@ -60,6 +60,11 @@ export function mergeBase(a, b) {
   return run('git', ['merge-base', a, b], { silent: true });
 }
 
+export function commitDistance(from, to) {
+  const out = run('git', ['rev-list', '--count', `${from}..${to}`], { silent: true });
+  return out ? Number(out) : Infinity;
+}
+
 export function rebaseOnto(onto, skip, branch) {
   try {
     execFileSync('git', ['rebase', '--onto', onto, skip, branch], {
