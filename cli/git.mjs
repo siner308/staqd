@@ -106,6 +106,32 @@ export function deleteBranch(branch) {
   run('git', ['branch', '-D', branch], { silent: true });
 }
 
+// ── Track helpers (git config local) ──
+
+export function getTrackedParent(branch) {
+  return run('git', ['config', '--local', `branch.${branch}.staqd-parent`], { silent: true });
+}
+
+export function setTrackedParent(branch, parent) {
+  run('git', ['config', '--local', `branch.${branch}.staqd-parent`, parent]);
+}
+
+export function unsetTrackedParent(branch) {
+  run('git', ['config', '--local', '--unset', `branch.${branch}.staqd-parent`], { silent: true });
+}
+
+export function listTrackedBranches() {
+  const out = run('git', ['config', '--local', '--get-regexp', 'branch\\..*\\.staqd-parent'], { silent: true });
+  if (!out) return [];
+  return out.split('\n').filter(Boolean).map(line => {
+    const spaceIdx = line.indexOf(' ');
+    const key = line.slice(0, spaceIdx);
+    const parent = line.slice(spaceIdx + 1);
+    const branch = key.replace(/^branch\./, '').replace(/\.staqd-parent$/, '');
+    return { branch, parent };
+  });
+}
+
 // ── gh CLI helpers ──
 
 export function ghPrList() {
