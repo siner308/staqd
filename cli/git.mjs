@@ -177,3 +177,4 @@ export function ghPrComment(number, body) {
 // feature A
 // extra change in A
 // feature A
+// feature B
