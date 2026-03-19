@@ -160,11 +160,19 @@ export function ghPrView(number) {
 }
 
 export function ghPrCreate(head, base, title) {
-  const out = run(
+  return run(
     'gh', ['pr', 'create', '--base', base, '--head', head, '--title', title, '--fill'],
+  );
+}
+
+export function ghPrListForBranch(branch) {
+  const out = run(
+    'gh', ['pr', 'list', '--head', branch, '--state', 'open',
+           '--json', 'number,headRefName,baseRefName,title,url'],
     { silent: true },
   );
-  return out; // URL of created PR
+  if (!out) return [];
+  return JSON.parse(out);
 }
 
 export function ghPrEditBase(number, base) {

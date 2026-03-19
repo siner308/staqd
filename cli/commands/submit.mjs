@@ -53,8 +53,18 @@ export async function submit(flags) {
     if (!dryRun) {
       git.pushUpstream(branch);
       const title = branchToTitle(branch);
-      const url = git.ghPrCreate(branch, base, title);
-      console.log(`  \x1b[32m✓\x1b[0m Created: ${url}`);
+      try {
+        const url = git.ghPrCreate(branch, base, title);
+        console.log(`  \x1b[32m✓\x1b[0m Created: ${url}`);
+      } catch {
+        // PR creation failed — check if one already exists (possibly by another author)
+        const existing = git.ghPrListForBranch(branch);
+        if (existing.length > 0) {
+          console.log(`  \x1b[90m·\x1b[0m PR #${existing[0].number} already exists for ${branch}`);
+        } else {
+          console.log(`  \x1b[31m✗\x1b[0m Failed to create PR for ${branch}`);
+        }
+      }
       // Re-fetch so subsequent iterations see the new PR
       prs = git.ghPrList();
     } else {
@@ -62,8 +72,14 @@ export async function submit(flags) {
     }
   }
 
-  // Re-fetch PR list after potential creation
-  const freshPrs = dryRun ? prs : git.ghPrList();
+  // Re-fetch PR list after potential creation, including PRs by other authors for tracked branches
+  let freshPrs = dryRun ? prs : git.ghPrList();
+  for (const branch of chain) {
+    if (!freshPrs.find(p => p.headRefName === branch)) {
+      const others = git.ghPrListForBranch(branch);
+      if (others.length > 0) freshPrs.push(others[0]);
+    }
+  }
   const { roots: freshRoots, nodes: freshNodes } = buildStackTree(freshPrs);
 
   // Push all branches in the current stack
