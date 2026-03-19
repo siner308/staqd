@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Staqd (`/stakt/`) is a stacked PR tool with two components:
 1. **GitHub Action** — Composite action for managing stacked PRs via PR comment commands (`st merge`, `st restack`, `st discover`, `st merge-all`, `st help`)
-2. **CLI** (`st`) — Local CLI for syncing, restacking, submitting, and moving branches (`st sync`, `st restack`, `st submit`, `st move`)
+2. **CLI** (`st`) — Local CLI for managing stacked branches (`st track`, `st create`, `st submit`, `st log`, `st up`, `st down`, `st sync`, `st restack`, `st move`)
 
 Written in plain JavaScript (ESM), no external npm dependencies. Distributed via `npx staqd` or `npm i -g staqd`.
 
@@ -55,7 +55,7 @@ Supports both `GITHUB_TOKEN` and GitHub App tokens (via `app-id` + `app-private-
 - **`cli/index.mjs`** — Command dispatcher and flag parser
 - **`cli/git.mjs`** — Git and `gh` CLI wrappers (no Octokit, uses `child_process.execSync`)
 - **`cli/stack.mjs`** — Stack tree discovery from PR list (`gh pr list` → build tree from base/head relationships)
-- **`cli/commands/`** — One file per command: `sync.mjs`, `restack.mjs`, `submit.mjs`, `move.mjs`
+- **`cli/commands/`** — One file per command: `sync.mjs`, `restack.mjs`, `submit.mjs`, `move.mjs`, `track.mjs`, `create.mjs`, `log.mjs`, `navigate.mjs`
 
 ## Code Conventions
 

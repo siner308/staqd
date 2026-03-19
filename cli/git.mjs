@@ -98,12 +98,43 @@ export function checkout(branch) {
   run('git', ['checkout', branch]);
 }
 
+export function checkoutNew(branch) {
+  run('git', ['checkout', '-b', branch]);
+}
+
 export function ensureLocalBranch(branch) {
   run('git', ['branch', branch, `origin/${branch}`], { silent: true });
 }
 
 export function deleteBranch(branch) {
   run('git', ['branch', '-D', branch], { silent: true });
+}
+
+// ── Track helpers (git config local) ──
+
+export function getTrackedParent(branch) {
+  return run('git', ['config', '--local', `branch.${branch}.staqd-parent`], { silent: true });
+}
+
+export function setTrackedParent(branch, parent) {
+  run('git', ['config', '--local', `branch.${branch}.staqd-parent`, parent]);
+}
+
+export function unsetTrackedParent(branch) {
+  run('git', ['config', '--local', '--unset', `branch.${branch}.staqd-parent`], { silent: true });
+}
+
+export function listTrackedBranches() {
+  const out = run('git', ['config', '--local', '--get-regexp', 'branch\\..*\\.staqd-parent'], { silent: true });
+  if (!out) return [];
+  return out.split('\n').filter(Boolean).map(line => {
+    const spaceIdx = line.indexOf(' ');
+    const key = line.slice(0, spaceIdx);
+    const parent = line.slice(spaceIdx + 1);
+    const match = key.match(/^branch\.(.+)\.staqd-parent$/);
+    const branch = match ? match[1] : key;
+    return { branch, parent };
+  });
 }
 
 // ── gh CLI helpers ──
@@ -143,3 +174,5 @@ export function ghPrEditBase(number, base) {
 export function ghPrComment(number, body) {
   run('gh', ['pr', 'comment', String(number), '--body', body], { silent: true });
 }
+// feature A
+// extra change in A

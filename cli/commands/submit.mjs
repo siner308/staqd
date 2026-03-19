@@ -11,34 +11,55 @@ export async function submit(flags) {
     throw new Error('Not on a branch (detached HEAD).');
   }
 
+  // Collect tracked chain: walk from current up to root
+  const chain = [];
+  let b = current;
+  while (b) {
+    const parent = git.getTrackedParent(b);
+    if (parent) {
+      chain.push(b);
+      b = parent;
+    } else {
+      // b is either default branch (stop) or untracked (include current only)
+      if (b !== git.defaultBranch()) chain.push(b);
+      break;
+    }
+  }
+  chain.reverse(); // root-first order
+
+  // If no tracked chain, fall back to just the current branch
+  if (chain.length === 0) chain.push(current);
+
   // Push current branch first
   console.log(`Pushing ${current}...`);
   if (!dryRun) {
     git.pushUpstream(current);
   }
 
-  // Discover stack from PRs
-  const prs = git.ghPrList();
-  const { roots, nodes } = buildStackTree(prs);
+  // Discover existing PRs
+  let prs = git.ghPrList();
 
-  // Check if current branch already has a PR
-  const existingPr = prs.find(p => p.headRefName === current);
-
-  if (!existingPr) {
-    // Need to create a PR — figure out the base branch
-    const base = detectBase(current, prs);
-
-    console.log(`Creating PR: ${current} → ${base}`);
-    if (!dryRun) {
-      // Generate title from branch name
-      const title = branchToTitle(current);
-      const url = git.ghPrCreate(current, base, title);
-      console.log(`  \x1b[32m✓\x1b[0m Created: ${url}`);
-    } else {
-      console.log(`  \x1b[33m~\x1b[0m Would create PR: ${current} → ${base}`);
+  // Create PRs for each tracked branch in the chain (root → leaf)
+  const defBranch = git.defaultBranch();
+  for (const branch of chain) {
+    const existingPr = prs.find(p => p.headRefName === branch);
+    if (existingPr) {
+      console.log(`  \x1b[90m·\x1b[0m PR #${existingPr.number} already exists for ${branch}`);
+      continue;
     }
-  } else {
-    console.log(`  \x1b[90m·\x1b[0m PR #${existingPr.number} already exists`);
+
+    const base = git.getTrackedParent(branch) || detectBase(branch, prs);
+    console.log(`Creating PR: ${branch} → ${base}`);
+    if (!dryRun) {
+      git.pushUpstream(branch);
+      const title = branchToTitle(branch);
+      const url = git.ghPrCreate(branch, base, title);
+      console.log(`  \x1b[32m✓\x1b[0m Created: ${url}`);
+      // Re-fetch so subsequent iterations see the new PR
+      prs = git.ghPrList();
+    } else {
+      console.log(`  \x1b[33m~\x1b[0m Would create PR: ${branch} → ${base}`);
+    }
   }
 
   // Re-fetch PR list after potential creation

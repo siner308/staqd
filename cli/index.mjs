@@ -2,8 +2,12 @@ import { sync } from './commands/sync.mjs';
 import { restack } from './commands/restack.mjs';
 import { submit } from './commands/submit.mjs';
 import { move } from './commands/move.mjs';
+import { track, untrack } from './commands/track.mjs';
+import { create } from './commands/create.mjs';
+import { log } from './commands/log.mjs';
+import { up, down } from './commands/navigate.mjs';
 
-const COMMANDS = { sync, restack, submit, move };
+const COMMANDS = { sync, restack, submit, move, track, untrack, create, log, up, down };
 
 const HELP = `\x1b[1mstaqd\x1b[0m — Stacked PR CLI
 
@@ -15,6 +19,12 @@ const HELP = `\x1b[1mstaqd\x1b[0m — Stacked PR CLI
   restack    Locally rebase stack branches onto their parents
   submit     Push branches and create/update PRs
   move       Move current branch to a new parent
+  track      Register current branch in the stack (--parent, --list)
+  untrack    Remove current branch from the stack
+  create     Create a new branch and auto-track it
+  log        Visualize the tracked stack tree
+  up         Move to child branch in the stack
+  down       Move to parent branch in the stack
 
 \x1b[1mOPTIONS\x1b[0m
   --help     Show help
@@ -51,3 +61,4 @@ function parseFlags(args) {
   }
   return flags;
 }
+// feature C
