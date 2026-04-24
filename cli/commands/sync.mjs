@@ -68,22 +68,40 @@ export async function sync(flags) {
     results.push({ branch, pr: pr.number, status: 'synced', detail: `${local.slice(0, 7)} → ${remote.slice(0, 7)}` });
   }
 
-  // Prune: local branches whose remote tracking branch is gone (merged PRs)
+  // Prune: staqd-tracked local branches whose remote is gone AND whose PR
+  // is no longer open (typical signal of a merged stacked branch). Scoped to
+  // tracked branches so we never delete a user's untracked local work.
   if (flags.prune) {
-    const locals = git.localBranches();
+    const tracked = git.listTrackedBranches();
+    const trackedBranchNames = new Set(tracked.map(t => t.branch));
     const prBranches = new Set(prs.map(p => p.headRefName));
-    for (const branch of locals) {
+    for (const branch of trackedBranchNames) {
       if (branch === current || branch === git.defaultBranch()) continue;
       if (prBranches.has(branch)) continue;
       const remote = git.remoteSha(branch);
-      if (!remote) {
-        if (dryRun) {
-          results.push({ branch, status: 'would-prune' });
-        } else {
-          const deleted = git.deleteBranch(branch);
-          results.push({ branch, status: deleted !== null ? 'pruned' : 'prune-failed' });
-        }
+      if (remote) continue;
+      if (dryRun) {
+        results.push({ branch, status: 'would-prune' });
+        continue;
       }
+      const deleted = git.deleteBranch(branch);
+      git.unsetTrackedParent(branch);
+      results.push({ branch, status: deleted !== null ? 'pruned' : 'prune-failed' });
+    }
+
+    // Also unset tracked-parent config that points at a branch no longer
+    // present anywhere (merged-and-deleted parents).
+    for (const { branch, parent } of tracked) {
+      if (parent === git.defaultBranch()) continue;
+      if (trackedBranchNames.has(parent)) continue;
+      if (git.remoteSha(parent)) continue;
+      if (prBranches.has(parent)) continue;
+      if (dryRun) {
+        results.push({ branch, status: 'would-unset-parent', detail: `parent ${parent} is gone` });
+        continue;
+      }
+      git.unsetTrackedParent(branch);
+      results.push({ branch, status: 'unset-parent', detail: `cleared stale parent ${parent}` });
     }
   }
 
@@ -96,6 +114,8 @@ export async function sync(flags) {
     'dirty': '\x1b[31m✗\x1b[0m',
     'pruned': '\x1b[33m✂\x1b[0m',
     'would-prune': '\x1b[33m✂\x1b[0m',
+    'unset-parent': '\x1b[33m✂\x1b[0m',
+    'would-unset-parent': '\x1b[33m✂\x1b[0m',
     'no-local': '\x1b[90m-\x1b[0m',
     'prune-failed': '\x1b[31m✗\x1b[0m',
   };
