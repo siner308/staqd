@@ -43,6 +43,30 @@ export function fetch() {
   run('git', ['fetch', '--prune', 'origin']);
 }
 
+// Best-effort fetch: returns true on success, false on failure (offline, auth, etc).
+// Never throws. Use when stale remote state is tolerable but desired.
+export function fetchBestEffort() {
+  const out = run('git', ['fetch', '--prune', 'origin'], { silent: true });
+  return out !== null;
+}
+
+// Checks whether every commit reachable from `branch` but not from `base` has
+// an equivalent patch already on `base`.
+// Returns:
+//   { known: true, landed: true }  — all commits already on base, or branch has
+//                                     no commits beyond base
+//   { known: true, landed: false } — at least one commit not on base
+//   { known: false }               — cherry errored (missing ref, etc.)
+// Note: patch-id equivalence. Does NOT detect squash-merges (squashing
+// combines patch-ids so individual commits no longer match).
+export function isLandedOn(base, branch) {
+  const out = run('git', ['cherry', base, branch], { silent: true });
+  if (out === null) return { known: false };
+  const lines = out.split('\n').filter(Boolean);
+  if (lines.length === 0) return { known: true, landed: true };
+  return { known: true, landed: lines.every(l => l.startsWith('-')) };
+}
+
 export function localBranches() {
   const out = run('git', ['branch', '--format=%(refname:short)'], { silent: true });
   return out ? out.split('\n').filter(Boolean) : [];
@@ -173,6 +197,25 @@ export function ghPrListForBranch(branch) {
   );
   if (!out) return [];
   return JSON.parse(out);
+}
+
+// Returns merged PRs for `branch` (state=merged).
+// Returns:
+//   { known: true, prs: [...] } — gh succeeded, list may be empty
+//   { known: false }            — gh errored (unauth, offline, rate limit)
+export function ghPrListMergedForBranch(branch) {
+  const out = run(
+    'gh', ['pr', 'list', '--head', branch, '--state', 'merged',
+           '--json', 'number,headRefName,mergedAt,url'],
+    { silent: true },
+  );
+  if (out === null) return { known: false };
+  if (!out) return { known: true, prs: [] };
+  try {
+    return { known: true, prs: JSON.parse(out) };
+  } catch {
+    return { known: false };
+  }
 }
 
 export function ghPrEditBase(number, base) {
