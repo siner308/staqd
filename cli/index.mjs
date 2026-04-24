@@ -1,64 +1,139 @@
-import { sync } from './commands/sync.mjs';
-import { restack } from './commands/restack.mjs';
-import { submit } from './commands/submit.mjs';
-import { move } from './commands/move.mjs';
-import { track, untrack } from './commands/track.mjs';
-import { create } from './commands/create.mjs';
-import { log } from './commands/log.mjs';
-import { up, down } from './commands/navigate.mjs';
+import { sync, spec as syncSpec } from './commands/sync.mjs';
+import { restack, spec as restackSpec } from './commands/restack.mjs';
+import { submit, spec as submitSpec } from './commands/submit.mjs';
+import { move, spec as moveSpec } from './commands/move.mjs';
+import { track, untrack, trackSpec, untrackSpec } from './commands/track.mjs';
+import { create, spec as createSpec } from './commands/create.mjs';
+import { log, spec as logSpec } from './commands/log.mjs';
+import { up, down, upSpec, downSpec } from './commands/navigate.mjs';
 
-const COMMANDS = { sync, restack, submit, move, track, untrack, create, log, up, down };
-
-const HELP = `\x1b[1mstaqd\x1b[0m — Stacked PR CLI
-
-\x1b[1mUSAGE\x1b[0m
-  st <command> [options]
-
-\x1b[1mCOMMANDS\x1b[0m
-  sync       Sync local branches with remote (after Actions restack)
-  restack    Locally rebase stack branches onto their parents
-  submit     Push branches and create/update PRs
-  move       Move current branch to a new parent
-  track      Register current branch in the stack (--parent, --list)
-  untrack    Remove current branch from the stack
-  create     Create a new branch and auto-track it
-  log        Visualize the tracked stack tree
-  up         Move to child branch in the stack
-  down       Move to parent branch in the stack
-
-\x1b[1mOPTIONS\x1b[0m
-  --help     Show help
-  --dry-run  Show what would be done without making changes`;
+const COMMANDS = {
+  sync:    { handler: sync,    spec: syncSpec },
+  restack: { handler: restack, spec: restackSpec },
+  submit:  { handler: submit,  spec: submitSpec },
+  move:    { handler: move,    spec: moveSpec },
+  track:   { handler: track,   spec: trackSpec },
+  untrack: { handler: untrack, spec: untrackSpec },
+  create:  { handler: create,  spec: createSpec },
+  log:     { handler: log,     spec: logSpec },
+  up:      { handler: up,      spec: upSpec },
+  down:    { handler: down,    spec: downSpec },
+};
 
 export async function run(args) {
   const command = args[0];
 
-  if (!command || command === '--help' || command === 'help') {
-    console.log(HELP);
+  if (!command || command === '--help' || command === '-h' || command === 'help') {
+    printGlobalHelp();
     return;
   }
 
-  const handler = COMMANDS[command];
-  if (!handler) {
+  const entry = COMMANDS[command];
+  if (!entry) {
     console.error(`Unknown command: ${command}\n`);
-    console.log(HELP);
+    printGlobalHelp();
     process.exit(1);
   }
 
-  const flags = parseFlags(args.slice(1));
-  await handler(flags);
+  const rest = args.slice(1);
+  if (rest.includes('--help') || rest.includes('-h')) {
+    printCommandHelp(entry.spec);
+    return;
+  }
+
+  const flags = parseFlags(rest);
+  validateFlags(flags, entry.spec);
+  await entry.handler(flags);
 }
 
 function parseFlags(args) {
   const flags = { _: [] };
   for (const arg of args) {
     if (arg.startsWith('--')) {
-      const [key, val] = arg.slice(2).split('=');
-      flags[key] = val ?? true;
+      const rest = arg.slice(2);
+      const eq = rest.indexOf('=');
+      if (eq === -1) {
+        flags[rest] = true;
+      } else {
+        flags[rest.slice(0, eq)] = rest.slice(eq + 1);
+      }
     } else {
       flags._.push(arg);
     }
   }
   return flags;
 }
-// feature C
+
+function validateFlags(flags, spec) {
+  const allowed = new Set(Object.keys(spec.flags || {}));
+  for (const key of Object.keys(flags)) {
+    if (key === '_') continue;
+    if (!allowed.has(key)) {
+      const hint = suggest(key, [...allowed]);
+      const suffix = hint ? ` (did you mean --${hint}?)` : '';
+      throw new Error(
+        `Unknown flag --${key} for "${spec.name}"${suffix}\n` +
+        `Run: st ${spec.name} --help`
+      );
+    }
+    const def = spec.flags[key];
+    if (def.requiresValue && flags[key] === true) {
+      throw new Error(`--${key} requires a value (use --${key}=<value>)`);
+    }
+  }
+}
+
+// Levenshtein-free cheap heuristic: suggest the allowed flag with the longest
+// common prefix with the unknown key.
+function suggest(unknown, allowed) {
+  let best = null;
+  let bestLen = 0;
+  for (const a of allowed) {
+    let i = 0;
+    while (i < unknown.length && i < a.length && unknown[i] === a[i]) i++;
+    if (i > bestLen && i >= 2) { best = a; bestLen = i; }
+  }
+  return best;
+}
+
+function printGlobalHelp() {
+  const lines = [
+    '\x1b[1mstaqd\x1b[0m — Stacked PR CLI',
+    '',
+    '\x1b[1mUSAGE\x1b[0m',
+    '  st <command> [options]',
+    '  st <command> --help',
+    '',
+    '\x1b[1mCOMMANDS\x1b[0m',
+  ];
+  const width = Math.max(...Object.keys(COMMANDS).map(n => n.length));
+  for (const name of Object.keys(COMMANDS)) {
+    const { spec } = COMMANDS[name];
+    lines.push(`  ${name.padEnd(width)}  ${spec.summary}`);
+  }
+  lines.push('');
+  lines.push('\x1b[1mGLOBAL OPTIONS\x1b[0m');
+  lines.push('  --help, -h  Show help (global or per-command)');
+  console.log(lines.join('\n'));
+}
+
+function printCommandHelp(spec) {
+  const lines = [
+    `\x1b[1mst ${spec.name}\x1b[0m — ${spec.summary}`,
+    '',
+    '\x1b[1mUSAGE\x1b[0m',
+    `  ${spec.usage}`,
+  ];
+  const flagNames = Object.keys(spec.flags || {});
+  if (flagNames.length) {
+    lines.push('');
+    lines.push('\x1b[1mFLAGS\x1b[0m');
+    const width = Math.max(...flagNames.map(n => n.length + (spec.flags[n].requiresValue ? 8 : 0)));
+    for (const name of flagNames) {
+      const def = spec.flags[name];
+      const label = def.requiresValue ? `--${name}=<value>` : `--${name}`;
+      lines.push(`  ${label.padEnd(width + 2)}  ${def.description}`);
+    }
+  }
+  console.log(lines.join('\n'));
+}

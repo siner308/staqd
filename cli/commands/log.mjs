@@ -2,6 +2,13 @@
 
 import * as git from '../git.mjs';
 
+export const spec = {
+  name: 'log',
+  summary: 'Visualize the tracked stack tree',
+  usage: 'st log',
+  flags: {},
+};
+
 export function log() {
   const tracked = git.listTrackedBranches();
   const current = git.currentBranch();

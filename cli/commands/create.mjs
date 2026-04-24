@@ -2,7 +2,17 @@
 
 import * as git from '../git.mjs';
 
+export const spec = {
+  name: 'create',
+  summary: 'Create a new branch and auto-track it',
+  usage: 'st create <branch-name> [--dry-run]',
+  flags: {
+    'dry-run': { description: 'Show what would be created without modifying branches' },
+  },
+};
+
 export function create(flags) {
+  const dryRun = flags['dry-run'];
   const name = flags._[0];
   if (!name) throw new Error('Usage: st create <branch-name>');
 
@@ -11,17 +21,18 @@ export function create(flags) {
 
   const defBranch = git.defaultBranch();
 
-  // Current branch must be default branch or tracked
   if (current !== defBranch && !git.getTrackedParent(current)) {
     throw new Error(
       `Current branch "${current}" is not tracked. Track it first with: st track`
     );
   }
 
-  // Create and checkout new branch
-  git.checkoutNew(name);
+  if (dryRun) {
+    console.log(`\x1b[33m~\x1b[0m Would create branch \x1b[1m${name}\x1b[0m tracking \x1b[1m${current}\x1b[0m`);
+    return;
+  }
 
-  // Auto-track with current branch as parent
+  git.checkoutNew(name);
   git.setTrackedParent(name, current);
   console.log(`\x1b[32m✓\x1b[0m Created and tracking \x1b[1m${name}\x1b[0m → \x1b[1m${current}\x1b[0m`);
 }

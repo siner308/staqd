@@ -42,8 +42,10 @@ export function buildStackTree(prs) {
 export function findStackFor(branch, roots, nodes) {
   let node = nodes.get(branch);
   if (!node) return null;
-  // Walk up via base to find the stack root
+  const visited = new Set();
   while (nodes.has(node.base)) {
+    if (visited.has(node.branch)) return node; // cycle — treat current as root
+    visited.add(node.branch);
     node = nodes.get(node.base);
   }
   return node;
@@ -53,10 +55,12 @@ export function findStackFor(branch, roots, nodes) {
  * Walk tree in DFS order (parent before children).
  * Calls fn(node, parent) for each node.
  */
-export function walkDFS(node, fn, parent = null) {
+export function walkDFS(node, fn, parent = null, visited = new Set()) {
+  if (visited.has(node)) return;
+  visited.add(node);
   fn(node, parent);
   for (const child of node.children) {
-    walkDFS(child, fn, node);
+    walkDFS(child, fn, node, visited);
   }
 }
 
