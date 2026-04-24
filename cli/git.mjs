@@ -84,6 +84,16 @@ export function mergeBase(a, b) {
   return run('git', ['merge-base', a, b], { silent: true });
 }
 
+// True if `ancestor` is an ancestor (or equal) of `descendant`. False on error.
+export function isAncestor(ancestor, descendant) {
+  try {
+    execFileSync('git', ['merge-base', '--is-ancestor', ancestor, descendant], { stdio: 'pipe' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function commitDistance(from, to) {
   const out = run('git', ['rev-list', '--count', `${from}..${to}`], { silent: true });
   return out ? Number(out) : Infinity;
@@ -163,10 +173,26 @@ export function listTrackedBranches() {
 
 // ── gh CLI helpers ──
 
+// Open PRs authored by the current user. Used by push paths so we never
+// attempt to force-push a teammate's branch. For stack tree DISCOVERY that
+// may include teammate PRs, use `ghPrListAll()` instead — but never feed its
+// output into push paths.
 export function ghPrList() {
   const out = run(
-    'gh', ['pr', 'list', '--author', '@me', '--state', 'open',
+    'gh', ['pr', 'list', '--author', '@me', '--state', 'open', '--limit', '500',
            '--json', 'number,headRefName,baseRefName,title,url'],
+    { silent: true },
+  );
+  if (!out) return [];
+  return JSON.parse(out);
+}
+
+// Repo-wide open PR list (all authors). Safe for READ-ONLY stack tree
+// construction. Must NOT be used to drive push/force-push decisions.
+export function ghPrListAll() {
+  const out = run(
+    'gh', ['pr', 'list', '--state', 'open', '--limit', '500',
+           '--json', 'number,headRefName,baseRefName,title,url,author'],
     { silent: true },
   );
   if (!out) return [];
