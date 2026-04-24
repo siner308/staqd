@@ -1,17 +1,30 @@
 // st sync — Sync local branches with remote after Actions restack.
 
+import readline from 'node:readline';
 import * as git from '../git.mjs';
 import { buildStackTree, printTree } from '../stack.mjs';
 
 export const spec = {
   name: 'sync',
   summary: 'Sync local branches with remote (after Actions restack)',
-  usage: 'st sync [--dry-run] [--prune]',
+  usage: 'st sync [--dry-run] [--prune | --no-prune]',
   flags: {
     'dry-run': { description: 'Show what would be done without modifying branches' },
-    'prune': { description: 'Also delete local branches whose remote tracking branch is gone' },
+    'prune': { description: 'Auto-delete tracked local branches whose remote is gone (skip the prompt)' },
+    'no-prune': { description: 'Skip pruning entirely (default is to prompt)' },
   },
 };
+
+async function promptYesNo(question) {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) return false;
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = await new Promise(resolve => rl.question(question, resolve));
+    return /^y(es)?$/i.test(answer.trim());
+  } finally {
+    rl.close();
+  }
+}
 
 export async function sync(flags) {
   const dryRun = flags['dry-run'];
@@ -71,18 +84,40 @@ export async function sync(flags) {
   // Prune: staqd-tracked local branches whose remote is gone AND whose PR
   // is no longer open (typical signal of a merged stacked branch). Scoped to
   // tracked branches so we never delete a user's untracked local work.
-  if (flags.prune) {
+  //
+  // Mode:
+  //   --prune    → auto-delete without asking
+  //   --no-prune → skip entirely
+  //   (default)  → prompt "Delete local branch X? [y/N]" per branch (TTY only)
+  if (!flags['no-prune']) {
     const tracked = git.listTrackedBranches();
     const trackedBranchNames = new Set(tracked.map(t => t.branch));
     const prBranches = new Set(prs.map(p => p.headRefName));
+
+    const candidates = [];
     for (const branch of trackedBranchNames) {
       if (branch === current || branch === git.defaultBranch()) continue;
       if (prBranches.has(branch)) continue;
-      const remote = git.remoteSha(branch);
-      if (remote) continue;
+      if (git.remoteSha(branch)) continue;
+      candidates.push(branch);
+    }
+
+    for (const branch of candidates) {
       if (dryRun) {
         results.push({ branch, status: 'would-prune' });
         continue;
+      }
+      let confirmed = !!flags.prune;
+      if (!confirmed) {
+        if (!process.stdin.isTTY) {
+          results.push({ branch, status: 'prune-skipped', detail: 'non-interactive; use --prune to auto-delete' });
+          continue;
+        }
+        confirmed = await promptYesNo(`Delete local branch \x1b[1m${branch}\x1b[0m (remote gone)? [y/N] `);
+        if (!confirmed) {
+          results.push({ branch, status: 'prune-skipped', detail: 'user declined' });
+          continue;
+        }
       }
       const deleted = git.deleteBranch(branch);
       git.unsetTrackedParent(branch);
@@ -90,7 +125,8 @@ export async function sync(flags) {
     }
 
     // Also unset tracked-parent config that points at a branch no longer
-    // present anywhere (merged-and-deleted parents).
+    // present anywhere (merged-and-deleted parents). Always safe to clean
+    // up — no branch deletion, just config.
     for (const { branch, parent } of tracked) {
       if (parent === git.defaultBranch()) continue;
       if (trackedBranchNames.has(parent)) continue;
@@ -114,6 +150,7 @@ export async function sync(flags) {
     'dirty': '\x1b[31m✗\x1b[0m',
     'pruned': '\x1b[33m✂\x1b[0m',
     'would-prune': '\x1b[33m✂\x1b[0m',
+    'prune-skipped': '\x1b[90m·\x1b[0m',
     'unset-parent': '\x1b[33m✂\x1b[0m',
     'would-unset-parent': '\x1b[33m✂\x1b[0m',
     'no-local': '\x1b[90m-\x1b[0m',
