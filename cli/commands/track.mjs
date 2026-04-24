@@ -42,9 +42,17 @@ export function track(flags) {
   }
   const parent = flags.parent || detectParent(current);
 
-  if (!validateParent(parent)) {
+  if (parent === current) {
+    throw new Error(`Cannot track "${current}" onto itself.`);
+  }
+
+  // Include the pending edge (current -> parent) so a proposed assignment
+  // that would close a cycle is caught. Without this, tracking C -> A when
+  // A -> B -> C already exists would loop through config.
+  if (!validateParent(parent, current)) {
     throw new Error(
-      `Cannot track: parent "${parent}" is not tracked and does not reach ${defBranch}.\n` +
+      `Cannot track: parent "${parent}" is not tracked and does not reach ${defBranch}, ` +
+      `or the chain contains a cycle.\n` +
       `Either track "${parent}" first, or use --parent to specify a valid parent.`
     );
   }
@@ -95,48 +103,52 @@ function listTracked() {
   }
 }
 
-/**
- * Detect the parent for the current branch.
- * Finds the closest tracked ancestor or the default branch.
- */
+// Detect the closest tracked ancestor of `branch`. A tracked branch T is a
+// plausible parent if its merge-base with `branch` sits above the default
+// branch's history — i.e. T and `branch` share private work, not just main.
+// Among candidates, pick the one with the smallest commit distance.
+//
+// This is more forgiving than requiring T's tip SHA to equal the merge-base,
+// which breaks whenever T advances (e.g. after st sync).
 function detectParent(branch) {
   const defBranch = git.defaultBranch();
+  const defSha = git.remoteSha(defBranch) || git.localSha(defBranch);
   const tracked = git.listTrackedBranches();
 
-  // Check tracked branches that are ancestors of the current branch
   let best = null;
   let bestDistance = Infinity;
 
   for (const { branch: trackedBranch } of tracked) {
+    if (trackedBranch === branch) continue;
     const mb = git.mergeBase(trackedBranch, branch);
-    const sha = git.localSha(trackedBranch);
-    if (mb && sha && mb === sha) {
-      const distance = git.commitDistance(sha, branch);
-      if (distance < bestDistance) {
-        best = trackedBranch;
-        bestDistance = distance;
-      }
+    if (!mb) continue;
+    // Skip if the only shared history is the default branch — means T was
+    // never an ancestor of `branch`.
+    if (defSha && git.isAncestor(mb, defSha)) continue;
+    const distance = git.commitDistance(mb, branch);
+    if (distance < bestDistance) {
+      best = trackedBranch;
+      bestDistance = distance;
     }
   }
 
   return best || defBranch;
 }
 
-/**
- * Validate that a parent is either the default branch or a tracked branch
- * whose chain reaches the default branch.
- */
-function validateParent(parent) {
+// Validate that assigning `child -> parent` would produce a chain that
+// terminates at the default branch without forming a cycle.
+function validateParent(parent, child) {
   const defBranch = git.defaultBranch();
   if (parent === defBranch) return true;
 
-  let b = parent;
   const visited = new Set();
+  if (child) visited.add(child); // reject cycles through the pending edge
+  let b = parent;
   while (b) {
-    if (visited.has(b)) return false; // cycle protection
+    if (visited.has(b)) return false;
     visited.add(b);
     const p = git.getTrackedParent(b);
-    if (!p) return false;  // chain broken
+    if (!p) return false;
     if (p === defBranch) return true;
     b = p;
   }
