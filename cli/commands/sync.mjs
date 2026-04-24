@@ -3,6 +3,16 @@
 import * as git from '../git.mjs';
 import { buildStackTree, printTree } from '../stack.mjs';
 
+export const spec = {
+  name: 'sync',
+  summary: 'Sync local branches with remote (after Actions restack)',
+  usage: 'st sync [--dry-run] [--prune]',
+  flags: {
+    'dry-run': { description: 'Show what would be done without modifying branches' },
+    'prune': { description: 'Also delete local branches whose remote tracking branch is gone' },
+  },
+};
+
 export async function sync(flags) {
   const dryRun = flags['dry-run'];
 

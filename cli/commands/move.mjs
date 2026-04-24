@@ -3,6 +3,15 @@
 import * as git from '../git.mjs';
 import { buildStackTree, printTree } from '../stack.mjs';
 
+export const spec = {
+  name: 'move',
+  summary: 'Move current branch to a new parent',
+  usage: 'st move <parent-branch> [--dry-run]',
+  flags: {
+    'dry-run': { description: 'Show what would be rebased without modifying branches' },
+  },
+};
+
 export async function move(flags) {
   const dryRun = flags['dry-run'];
   const newParent = flags._[0];

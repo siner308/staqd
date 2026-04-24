@@ -3,6 +3,15 @@
 import * as git from '../git.mjs';
 import { buildStackTree, findStackFor, collectDFS, printTree } from '../stack.mjs';
 
+export const spec = {
+  name: 'submit',
+  summary: 'Push branches and create/update PRs',
+  usage: 'st submit [--dry-run]',
+  flags: {
+    'dry-run': { description: 'Show what would be done without pushing or creating PRs' },
+  },
+};
+
 export async function submit(flags) {
   const dryRun = flags['dry-run'];
   const current = git.currentBranch();

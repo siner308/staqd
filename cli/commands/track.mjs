@@ -2,12 +2,33 @@
 
 import * as git from '../git.mjs';
 
+export const trackSpec = {
+  name: 'track',
+  summary: 'Register current branch in the stack',
+  usage: 'st track [--parent=<branch>] [--list] [--dry-run]',
+  flags: {
+    'parent': { description: 'Parent branch name (defaults to auto-detected ancestor)', requiresValue: true },
+    'list': { description: 'List all tracked branches' },
+    'dry-run': { description: 'Show what would be tracked without writing git config' },
+  },
+};
+
+export const untrackSpec = {
+  name: 'untrack',
+  summary: 'Remove current branch from the stack',
+  usage: 'st untrack [--dry-run]',
+  flags: {
+    'dry-run': { description: 'Show what would be untracked without writing git config' },
+  },
+};
+
 export function track(flags) {
   if (flags.list) {
     listTracked();
     return;
   }
 
+  const dryRun = flags['dry-run'];
   const current = git.currentBranch();
   if (!current) throw new Error('Not on a branch (detached HEAD).');
 
@@ -21,7 +42,6 @@ export function track(flags) {
   }
   const parent = flags.parent || detectParent(current);
 
-  // Validate parent chain reaches default branch
   if (!validateParent(parent)) {
     throw new Error(
       `Cannot track: parent "${parent}" is not tracked and does not reach ${defBranch}.\n` +
@@ -29,17 +49,28 @@ export function track(flags) {
     );
   }
 
+  if (dryRun) {
+    console.log(`\x1b[33m~\x1b[0m Would track \x1b[1m${current}\x1b[0m → \x1b[1m${parent}\x1b[0m`);
+    return;
+  }
+
   git.setTrackedParent(current, parent);
   console.log(`\x1b[32m✓\x1b[0m Tracking \x1b[1m${current}\x1b[0m → \x1b[1m${parent}\x1b[0m`);
 }
 
-export function untrack() {
+export function untrack(flags = {}) {
+  const dryRun = flags['dry-run'];
   const current = git.currentBranch();
   if (!current) throw new Error('Not on a branch (detached HEAD).');
 
   const parent = git.getTrackedParent(current);
   if (!parent) {
     console.log(`\x1b[90m·\x1b[0m ${current} is not tracked`);
+    return;
+  }
+
+  if (dryRun) {
+    console.log(`\x1b[33m~\x1b[0m Would untrack \x1b[1m${current}\x1b[0m (current parent: ${parent})`);
     return;
   }
 

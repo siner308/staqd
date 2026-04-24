@@ -3,6 +3,15 @@
 import * as git from '../git.mjs';
 import { buildStackTree, findStackFor, walkDFS, printTree } from '../stack.mjs';
 
+export const spec = {
+  name: 'restack',
+  summary: 'Locally rebase stack branches onto their parents',
+  usage: 'st restack [--dry-run]',
+  flags: {
+    'dry-run': { description: 'Show what would be rebased without modifying branches' },
+  },
+};
+
 export async function restack(flags) {
   const dryRun = flags['dry-run'];
 
