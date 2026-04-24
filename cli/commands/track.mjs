@@ -16,6 +16,9 @@ export function track(flags) {
     throw new Error(`Cannot track the default branch (${defBranch}).`);
   }
 
+  if (flags.parent === true) {
+    throw new Error('--parent requires a value, e.g. --parent=main');
+  }
   const parent = flags.parent || detectParent(current);
 
   // Validate parent chain reaches default branch
