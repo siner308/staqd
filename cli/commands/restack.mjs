@@ -43,49 +43,54 @@ export async function restack(flags) {
     if (mb) mergeBases.set(node.branch, mb);
   });
 
-  // DFS rebase: parent before children
+  // DFS rebase: parent before children. Any exception inside the walk must
+  // not leave the user stranded on an intermediate branch, so the restore is
+  // in a finally block.
   const results = [];
   const originalBranch = current;
 
-  walkDFS(stack, (node, parent) => {
-    if (!parent) return; // skip root
+  try {
+    walkDFS(stack, (node, parent) => {
+      if (!parent) return; // skip root
 
-    const mb = mergeBases.get(node.branch);
-    if (!mb) {
-      results.push({ branch: node.branch, pr: node.pr, status: 'no-merge-base' });
-      return;
+      const mb = mergeBases.get(node.branch);
+      if (!mb) {
+        results.push({ branch: node.branch, pr: node.pr, status: 'no-merge-base' });
+        return;
+      }
+
+      const parentRef = `origin/${parent.branch}`;
+      const remoteChild = git.remoteSha(node.branch);
+      const parentSha = git.remoteSha(parent.branch);
+
+      if (remoteChild && mb === parentSha) {
+        results.push({ branch: node.branch, pr: node.pr, status: 'up-to-date' });
+        return;
+      }
+
+      if (dryRun) {
+        results.push({ branch: node.branch, pr: node.pr, status: 'would-restack', parent: parent.branch });
+        return;
+      }
+
+      git.ensureLocalBranch(node.branch);
+
+      const r = git.rebaseOnto(parentRef, mb, node.branch);
+      if (r.ok) {
+        try {
+          git.pushForce(node.branch);
+          results.push({ branch: node.branch, pr: node.pr, status: 'restacked', parent: parent.branch });
+        } catch (e) {
+          results.push({ branch: node.branch, pr: node.pr, status: 'push-failed', parent: parent.branch, error: e.message.split('\n')[0] });
+        }
+      } else {
+        results.push({ branch: node.branch, pr: node.pr, status: 'conflict', parent: parent.branch, error: r.error });
+      }
+    });
+  } finally {
+    if (!dryRun) {
+      try { git.checkout(originalBranch); } catch {}
     }
-
-    const parentRef = `origin/${parent.branch}`;
-    const remoteChild = git.remoteSha(node.branch);
-    const parentSha = git.remoteSha(parent.branch);
-
-    // Check if restack is needed
-    if (remoteChild && mb === parentSha) {
-      results.push({ branch: node.branch, pr: node.pr, status: 'up-to-date' });
-      return;
-    }
-
-    if (dryRun) {
-      results.push({ branch: node.branch, pr: node.pr, status: 'would-restack', parent: parent.branch });
-      return;
-    }
-
-    // Ensure local branch exists
-    git.ensureLocalBranch(node.branch);
-
-    const r = git.rebaseOnto(parentRef, mb, node.branch);
-    if (r.ok) {
-      git.pushForce(node.branch);
-      results.push({ branch: node.branch, pr: node.pr, status: 'restacked', parent: parent.branch });
-    } else {
-      results.push({ branch: node.branch, pr: node.pr, status: 'conflict', parent: parent.branch, error: r.error });
-    }
-  });
-
-  // Restore original branch
-  if (!dryRun) {
-    try { git.checkout(originalBranch); } catch {}
   }
 
   // Print results
@@ -95,6 +100,7 @@ export async function restack(flags) {
     'would-restack': '\x1b[33m~\x1b[0m',
     'up-to-date': '\x1b[90m·\x1b[0m',
     'conflict': '\x1b[31m✗\x1b[0m',
+    'push-failed': '\x1b[31m✗\x1b[0m',
     'no-merge-base': '\x1b[31m?\x1b[0m',
   };
 

@@ -39,14 +39,19 @@ export function isClean() {
   return cached !== null;
 }
 
-export function fetch() {
-  run('git', ['fetch', '--prune', 'origin']);
+export function fetch({ silent = false } = {}) {
+  if (silent) {
+    run('git', ['fetch', '--prune', '--quiet', 'origin'], { silent: true });
+  } else {
+    run('git', ['fetch', '--prune', 'origin']);
+  }
 }
 
 // Best-effort fetch: returns true on success, false on failure (offline, auth, etc).
-// Never throws. Use when stale remote state is tolerable but desired.
+// Never throws. Always quiet on stderr. Use when stale remote state is
+// tolerable but desired.
 export function fetchBestEffort() {
-  const out = run('git', ['fetch', '--prune', 'origin'], { silent: true });
+  const out = run('git', ['fetch', '--prune', '--quiet', 'origin'], { silent: true });
   return out !== null;
 }
 
