@@ -48,34 +48,87 @@ export async function submit(flags) {
     mergedPrCache.set(branch, result);
     return result;
   };
+  const anyStateCache = new Map();
+  const anyStatePrFor = (branch) => {
+    if (anyStateCache.has(branch)) return anyStateCache.get(branch);
+    const result = git.ghPrListAnyStateForBranch(branch);
+    anyStateCache.set(branch, result);
+    return result;
+  };
+  const originRepo = git.originRepo();
 
-  // Hard gate: refuse to push a branch that has already been merged.
-  //
-  // Detection layers:
-  //   1. GitHub: any merged PR with this head branch (primary signal).
-  //   2. Patch-id: all commits already landed on default (`git cherry`).
-  //      Catches rebase/fast-forward merges; does NOT catch squash-merges.
-  //
-  // Both layers must be CONFIDENT (not errored) for us to clear a branch that
-  // doesn't have an open PR. An unknown state fails closed — the red line is
-  // "never push a merged branch", so when we can't tell, we refuse.
-  const canPush = (branch, prs) => {
-    const hasOpenPr = prs.some(p => p.headRefName === branch) || openPrFor(branch).length > 0;
-    if (hasOpenPr) return { ok: true };
+  // A PR "belongs to this repo" if its head ref lives in the same remote we
+  // push to. Fork PRs point at a different head repository — treating such a
+  // PR as ownership of `origin/<branch>` would let us push over an unrelated
+  // branch in the upstream repo. Unknown head-repo metadata is treated as
+  // same-repo (gh may omit it for older response shapes) — the other gates
+  // still apply.
+  const isSameRepoPr = (pr) => {
+    if (!originRepo) return true;
+    const headOwner = pr.headRepositoryOwner && pr.headRepositoryOwner.login;
+    const headName = pr.headRepository && pr.headRepository.name;
+    if (!headOwner || !headName) return true;
+    return headOwner === originRepo.owner && headName === originRepo.name;
+  };
 
-    const merged = mergedPrFor(branch);
-    if (!merged.known) {
-      return { ok: false, reason: 'cannot verify merge status (gh unavailable) — refusing to push without open PR' };
-    }
-    if (merged.prs.length > 0) {
-      return { ok: false, reason: `previously merged as PR #${merged.prs[0].number}` };
-    }
+  // Hard gate: refuse to push a branch that has already been merged OR that
+  // we don't own.
+  //
+  // Checks (order matters):
+  //   1. Patch-id landed check — if every commit on `branch` beyond
+  //      origin/<default> is already present there, pushing adds nothing and
+  //      could re-introduce merged content. Refuse. Unknown → refuse.
+  //   2. Stale-local-vs-merged check — if a merged PR for this branch exists
+  //      and its head SHA at merge time matches our local tip, the branch
+  //      was never advanced past the merge. Refuse.
+  //   3. Ownership check — only clear the gate when there's an open PR for
+  //      this branch authored by the current user (`prs` is @me-scoped).
+  //      A teammate's open PR does NOT authorize us to push their branch.
+  //   4. Brand-new branch — no open or merged PRs. Allow.
+  //
+  // Unknown state (gh or git errors) fails closed when the branch has no
+  // current-user open PR.
+  const canPush = (branch, myPrs) => {
     const landed = git.isLandedOn(`origin/${defBranch}`, branch);
     if (!landed.known) {
-      return { ok: false, reason: `cannot verify against origin/${defBranch} — refusing to push without open PR` };
+      return { ok: false, reason: `cannot verify against origin/${defBranch}` };
     }
     if (landed.landed) {
       return { ok: false, reason: `commits already on ${defBranch}` };
+    }
+
+    const merged = mergedPrFor(branch);
+    if (!merged.known) {
+      return { ok: false, reason: 'cannot verify merge status (gh unavailable)' };
+    }
+    const localTip = git.localSha(branch);
+    for (const mpr of merged.prs) {
+      if (localTip && (mpr.headRefOid === localTip || (mpr.mergeCommit && mpr.mergeCommit.oid === localTip))) {
+        return { ok: false, reason: `local tip matches merged PR #${mpr.number}` };
+      }
+    }
+
+    const hasMyOpenPr = myPrs.some(p => p.headRefName === branch && isSameRepoPr(p));
+    if (hasMyOpenPr) return { ok: true };
+
+    // No current-user open PR in this repo. Require positive ownership:
+    // the branch must have NO foreign PR history. A PR authored by someone
+    // else — or our own PR pointing at a fork head — blocks us, since the
+    // branch may still exist on origin and a force-push would rewrite it.
+    const anyState = anyStatePrFor(branch);
+    if (!anyState.known) {
+      return { ok: false, reason: 'cannot verify PR history (gh unavailable)' };
+    }
+    const me = git.ghCurrentUser();
+    const foreign = anyState.prs.find(p => {
+      const authored = me && p.author && p.author.login === me;
+      return p.state !== 'MERGED' && (!authored || !isSameRepoPr(p));
+    });
+    if (foreign) {
+      return { ok: false, reason: `PR #${foreign.number} (${foreign.state.toLowerCase()}) is not yours — not authorized to push` };
+    }
+    if (merged.prs.length > 0) {
+      return { ok: false, reason: `previously merged as PR #${merged.prs[0].number}` };
     }
     return { ok: true };
   };
@@ -167,8 +220,12 @@ export async function submit(flags) {
     }
   }
 
-  // Re-fetch PR list after potential creation, including PRs by other authors for tracked branches
-  let freshPrs = dryRun ? prs : git.ghPrList();
+  // Re-fetch the user's own PRs (canonical source for push authorization).
+  // Separately build a discovery-only tree that includes teammate PRs so the
+  // stack shape is accurate, but never use the discovery tree to decide
+  // whether to push — that must go through canPush with myPrs only.
+  const myPrs = dryRun ? prs : git.ghPrList();
+  const freshPrs = [...myPrs];
   for (const branch of chain) {
     if (!freshPrs.find(p => p.headRefName === branch)) {
       const others = git.ghPrListForBranch(branch);
@@ -202,7 +259,7 @@ export async function submit(flags) {
         continue;
       }
 
-      const gate = canPush(node.branch, freshPrs);
+      const gate = canPush(node.branch, myPrs);
       if (!gate.ok) {
         results.push({ branch: node.branch, pr: node.pr, status: 'refused', detail: gate.reason });
         continue;

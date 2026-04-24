@@ -182,14 +182,58 @@ export function listTrackedBranches() {
 // attempt to force-push a teammate's branch. For stack tree DISCOVERY that
 // may include teammate PRs, use `ghPrListAll()` instead — but never feed its
 // output into push paths.
+//
+// headRepository/headRepositoryOwner are included so callers can distinguish
+// PRs from the same-repo (safe to treat as ownership of `origin/<branch>`)
+// from fork PRs (whose head lives in a different repo).
 export function ghPrList() {
   const out = run(
     'gh', ['pr', 'list', '--author', '@me', '--state', 'open', '--limit', '500',
-           '--json', 'number,headRefName,baseRefName,title,url'],
+           '--json', 'number,headRefName,baseRefName,title,url,headRepository,headRepositoryOwner'],
     { silent: true },
   );
   if (!out) return [];
   return JSON.parse(out);
+}
+
+// Repo-wide PR list for `branch` across all states. Used by push paths to
+// refuse force-pushing a branch that has any non-current-user PR history
+// (open, closed-unmerged) — the branch may be a teammate's abandoned work.
+// Returns { known, prs } same as ghPrListMergedForBranch.
+export function ghPrListAnyStateForBranch(branch) {
+  const out = run(
+    'gh', ['pr', 'list', '--head', branch, '--state', 'all', '--limit', '100',
+           '--json', 'number,state,headRefName,author,url,headRepository,headRepositoryOwner'],
+    { silent: true },
+  );
+  if (out === null) return { known: false };
+  if (!out) return { known: true, prs: [] };
+  try {
+    return { known: true, prs: JSON.parse(out) };
+  } catch {
+    return { known: false };
+  }
+}
+
+// The owner/name of the origin remote, parsed from its URL. Used to decide
+// whether a PR's head repo is this repo (safe for push) or a fork.
+// Returns { owner, name } or null.
+export function originRepo() {
+  const url = run('git', ['remote', 'get-url', 'origin'], { silent: true });
+  if (!url) return null;
+  // Supports https://github.com/OWNER/NAME(.git)? and git@github.com:OWNER/NAME(.git)?
+  const m = url.match(/[:/]([^/:]+)\/([^/]+?)(?:\.git)?$/);
+  if (!m) return null;
+  return { owner: m[1], name: m[2] };
+}
+
+// The current GitHub user's login, or null on failure. Cached at module load.
+let _currentUserCache;
+export function ghCurrentUser() {
+  if (_currentUserCache !== undefined) return _currentUserCache;
+  const out = run('gh', ['api', 'user', '--jq', '.login'], { silent: true });
+  _currentUserCache = out || null;
+  return _currentUserCache;
 }
 
 // Repo-wide open PR list (all authors). Safe for READ-ONLY stack tree
@@ -232,12 +276,15 @@ export function ghPrListForBranch(branch) {
 
 // Returns merged PRs for `branch` (state=merged).
 // Returns:
-//   { known: true, prs: [...] } — gh succeeded, list may be empty
+//   { known: true, prs: [...] } — gh succeeded, list may be empty.
+//                                 Each PR includes mergeCommit.oid when
+//                                 available so callers can detect stale
+//                                 local branches pointing at merged content.
 //   { known: false }            — gh errored (unauth, offline, rate limit)
 export function ghPrListMergedForBranch(branch) {
   const out = run(
     'gh', ['pr', 'list', '--head', branch, '--state', 'merged',
-           '--json', 'number,headRefName,mergedAt,url'],
+           '--json', 'number,headRefName,mergedAt,url,mergeCommit,headRefOid'],
     { silent: true },
   );
   if (out === null) return { known: false };
