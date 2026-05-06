@@ -69,16 +69,15 @@ export async function move(flags) {
   const oldParent = myPr.baseRefName;
   const trackedParent = git.getTrackedParent(current);
 
-  // Decide whether a rebase is needed. Current is "already based on" newParent
-  // when newParent's tip is reachable from current — i.e. current sits on top
-  // of newParent in DAG terms. In that case the metadata may still be stale,
-  // but the branch contents are already correct.
-  const needsRebase = !git.isAncestor(newParentRef, current);
-
+  // Rebase whenever the PR base changes — we need to drop oldParent's
+  // contribution and replay onto newParent. Skipping the rebase based solely
+  // on `isAncestor(newParent, current)` is wrong: in `main → B → C`, moving C
+  // to main would leave B's commits inside C's PR diff against main.
   const trackedNeedsUpdate = trackedParent !== newParent;
   const prBaseNeedsUpdate = oldParent !== newParent;
+  const needsRebase = prBaseNeedsUpdate;
 
-  if (!needsRebase && !trackedNeedsUpdate && !prBaseNeedsUpdate) {
+  if (!needsRebase && !trackedNeedsUpdate) {
     console.log(`Already based on ${newParent}; metadata already matches.`);
     return;
   }
@@ -87,27 +86,30 @@ export async function move(flags) {
 
   // Step 1: rebase if needed.
   if (needsRebase) {
-    // Compute the merge-base with old parent so we can replay only the commits
-    // unique to current. Try the remote ref first; fall back to local if the
-    // old parent's branch was deleted (e.g. squash-merged and pruned).
+    // Need oldParent's tip to know which commits belong to oldParent vs current.
+    // If both remote and local refs are gone (e.g. squash-merged and pruned),
+    // we cannot derive a safe rebase boundary — bail rather than silently
+    // replaying already-merged commits onto newParent and force-pushing.
     const oldParentRef = git.remoteSha(oldParent)
       ? `origin/${oldParent}`
       : (git.localSha(oldParent) ? oldParent : null);
 
-    let mb = oldParentRef ? git.mergeBase(oldParentRef, current) : null;
-
-    // Fallback: if old parent is gone, use the merge-base with new parent.
-    // This drops only commits already shared with newParent, which is the
-    // safe minimum when we have nothing better to skip from.
-    if (!mb) {
-      mb = git.mergeBase(newParentRef, current);
+    if (!oldParentRef) {
+      throw new Error(
+        `Old parent "${oldParent}" is no longer reachable in origin or locally. ` +
+        `Cannot determine which commits to drop from ${current} without it.\n` +
+        `Recover manually:\n` +
+        `  1. Find the old parent's tip SHA (e.g. \`gh pr view <old-pr> --json headRefOid\`)\n` +
+        `  2. git rebase --onto ${newParentRef} <old-parent-tip> ${current}\n` +
+        `  3. git push --force-with-lease origin ${current}\n` +
+        `  4. gh pr edit ${myPr.number} --base ${newParent}\n` +
+        `  5. git config --local branch.${current}.staqd-parent ${newParent}`
+      );
     }
 
+    const mb = git.mergeBase(oldParentRef, current);
     if (!mb) {
-      throw new Error(
-        `Cannot find merge-base for ${current}. Old parent "${oldParent}" is unreachable ` +
-        `and current shares no history with ${newParent}.`
-      );
+      throw new Error(`Cannot find merge-base between ${oldParentRef} and ${current}.`);
     }
 
     if (dryRun) {
