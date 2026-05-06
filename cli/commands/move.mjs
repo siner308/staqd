@@ -69,94 +69,95 @@ export async function move(flags) {
   const oldParent = myPr.baseRefName;
   const trackedParent = git.getTrackedParent(current);
 
-  // Rebase whenever the PR base changes — we need to drop oldParent's
-  // contribution and replay onto newParent. Skipping the rebase based solely
-  // on `isAncestor(newParent, current)` is wrong: in `main → B → C`, moving C
-  // to main would leave B's commits inside C's PR diff against main.
-  const trackedNeedsUpdate = trackedParent !== newParent;
-  const prBaseNeedsUpdate = oldParent !== newParent;
-  const needsRebase = prBaseNeedsUpdate;
+  // Refuse to operate on drifted metadata. If PR base and tracked-parent
+  // disagree, neither alone is a safe rebase boundary — force the user to
+  // pick a side first. Without this guard, a metadata-only sync (only one of
+  // the two changing) can leave the branch contents inconsistent with the
+  // updated metadata.
+  if (oldParent !== trackedParent) {
+    throw new Error(
+      `Inconsistent metadata for ${current}: ` +
+      `PR #${myPr.number} base is "${oldParent}" but tracked-parent is "${trackedParent}". ` +
+      `One of them was edited outside st move. Reconcile before retrying:\n` +
+      `  Option A — align tracked to PR (if the branch is rebased onto "${oldParent}"):\n` +
+      `    st track --parent=${oldParent}\n` +
+      `  Option B — align PR to tracked (if the branch is rebased onto "${trackedParent}"):\n` +
+      `    gh pr edit ${myPr.number} --base ${trackedParent}\n` +
+      `Then re-run: st move ${newParent}`
+    );
+  }
 
-  if (!needsRebase && !trackedNeedsUpdate) {
-    console.log(`Already based on ${newParent}; metadata already matches.`);
+  const currentParent = oldParent; // === trackedParent at this point
+
+  if (currentParent === newParent) {
+    console.log(`Already based on ${newParent}; nothing to do.`);
     return;
   }
 
-  console.log(`Moving \x1b[1m${current}\x1b[0m → ${newParent}`);
+  console.log(`Moving \x1b[1m${current}\x1b[0m: ${currentParent} → ${newParent}`);
 
-  // Step 1: rebase if needed.
-  if (needsRebase) {
-    // Need oldParent's tip to know which commits belong to oldParent vs current.
-    // If both remote and local refs are gone (e.g. squash-merged and pruned),
-    // we cannot derive a safe rebase boundary — bail rather than silently
-    // replaying already-merged commits onto newParent and force-pushing.
-    const oldParentRef = git.remoteSha(oldParent)
-      ? `origin/${oldParent}`
-      : (git.localSha(oldParent) ? oldParent : null);
+  // Resolve the rebase boundary. Prefer the remote ref for the previous
+  // parent, since local refs can be stale or accidentally fast-forwarded
+  // (e.g. after `git pull` while on the parent). When the remote is gone
+  // (squash-merged and pruned), recover the original head SHA from the
+  // merged-PR record on GitHub. Bail otherwise — replaying with the wrong
+  // boundary force-pushes corrupted history.
+  let parentRef = git.remoteSha(currentParent) ? `origin/${currentParent}` : null;
 
-    if (!oldParentRef) {
-      throw new Error(
-        `Old parent "${oldParent}" is no longer reachable in origin or locally. ` +
-        `Cannot determine which commits to drop from ${current} without it.\n` +
-        `Recover manually:\n` +
-        `  1. Find the old parent's tip SHA (e.g. \`gh pr view <old-pr> --json headRefOid\`)\n` +
-        `  2. git rebase --onto ${newParentRef} <old-parent-tip> ${current}\n` +
-        `  3. git push --force-with-lease origin ${current}\n` +
-        `  4. gh pr edit ${myPr.number} --base ${newParent}\n` +
-        `  5. git config --local branch.${current}.staqd-parent ${newParent}`
-      );
-    }
-
-    const mb = git.mergeBase(oldParentRef, current);
-    if (!mb) {
-      throw new Error(`Cannot find merge-base between ${oldParentRef} and ${current}.`);
-    }
-
-    if (dryRun) {
-      console.log(`  \x1b[33m~\x1b[0m Would rebase --onto ${newParentRef} ${mb.slice(0, 7)} ${current}`);
-    } else {
-      const r = git.rebaseOnto(newParentRef, mb, current);
-      if (!r.ok) {
-        console.error('\n\x1b[31mConflict during rebase.\x1b[0m Resolve manually:');
-        console.log(`  git rebase --onto ${newParentRef} ${mb.slice(0, 7)} ${current}`);
-        console.log('  # resolve conflicts, then:');
-        console.log(`  git push --force-with-lease origin ${current}`);
-        if (prBaseNeedsUpdate) {
-          console.log(`  gh pr edit ${myPr.number} --base ${newParent}`);
-        }
-        if (trackedNeedsUpdate) {
-          console.log(`  git config --local branch.${current}.staqd-parent ${newParent}`);
-        }
-        throw new Error('Rebase had conflicts.');
+  if (!parentRef) {
+    const merged = git.ghPrListMergedForBranch(currentParent);
+    if (merged.known && merged.prs.length > 0) {
+      const headRefOid = merged.prs[0].headRefOid;
+      if (headRefOid && git.localSha(headRefOid)) {
+        parentRef = headRefOid;
       }
-      git.pushForce(current);
-      console.log(`  \x1b[32m✓\x1b[0m Rebased and pushed`);
-    }
-  } else {
-    console.log(`  \x1b[90m·\x1b[0m ${current} already contains ${newParent}; skipping rebase`);
-  }
-
-  // Step 2: reconcile PR base unconditionally.
-  if (prBaseNeedsUpdate) {
-    if (dryRun) {
-      console.log(`  \x1b[33m~\x1b[0m Would update PR #${myPr.number} base: ${oldParent} → ${newParent}`);
-    } else {
-      git.ghPrEditBase(myPr.number, newParent);
-      console.log(`  \x1b[32m✓\x1b[0m PR #${myPr.number} base updated to ${newParent}`);
     }
   }
 
-  // Step 3: reconcile tracked-parent metadata unconditionally.
-  if (trackedNeedsUpdate) {
-    if (dryRun) {
-      console.log(`  \x1b[33m~\x1b[0m Would update tracked parent: ${trackedParent || '<none>'} → ${newParent}`);
-    } else {
-      git.setTrackedParent(current, newParent);
-      console.log(`  \x1b[32m✓\x1b[0m Tracked parent updated: ${trackedParent || '<none>'} → ${newParent}`);
-    }
+  if (!parentRef) {
+    throw new Error(
+      `Previous parent "${currentParent}" is no longer reachable in origin and ` +
+      `cannot be recovered from merged-PR history. ` +
+      `Cannot determine which commits to drop from ${current}.\n` +
+      `Recover manually:\n` +
+      `  1. Find the previous parent's tip SHA (e.g. \`gh pr view <pr-number> --json headRefOid\`)\n` +
+      `  2. git rebase --onto ${newParentRef} <previous-parent-tip> ${current}\n` +
+      `  3. git push --force-with-lease origin ${current}\n` +
+      `  4. gh pr edit ${myPr.number} --base ${newParent}\n` +
+      `  5. git config --local branch.${current}.staqd-parent ${newParent}`
+    );
   }
 
-  if (dryRun) return;
+  const mb = git.mergeBase(parentRef, current);
+  if (!mb) {
+    throw new Error(`Cannot find merge-base between ${parentRef} and ${current}.`);
+  }
+
+  if (dryRun) {
+    console.log(`  \x1b[33m~\x1b[0m Would rebase --onto ${newParentRef} ${mb.slice(0, 7)} ${current}`);
+    console.log(`  \x1b[33m~\x1b[0m Would update PR #${myPr.number} base: ${currentParent} → ${newParent}`);
+    console.log(`  \x1b[33m~\x1b[0m Would update tracked parent: ${currentParent} → ${newParent}`);
+    return;
+  }
+
+  const r = git.rebaseOnto(newParentRef, mb, current);
+  if (!r.ok) {
+    console.error('\n\x1b[31mConflict during rebase.\x1b[0m Resolve manually:');
+    console.log(`  git rebase --onto ${newParentRef} ${mb.slice(0, 7)} ${current}`);
+    console.log('  # resolve conflicts, then:');
+    console.log(`  git push --force-with-lease origin ${current}`);
+    console.log(`  gh pr edit ${myPr.number} --base ${newParent}`);
+    console.log(`  git config --local branch.${current}.staqd-parent ${newParent}`);
+    throw new Error('Rebase had conflicts.');
+  }
+  git.pushForce(current);
+  console.log(`  \x1b[32m✓\x1b[0m Rebased and pushed`);
+
+  git.ghPrEditBase(myPr.number, newParent);
+  console.log(`  \x1b[32m✓\x1b[0m PR #${myPr.number} base updated to ${newParent}`);
+
+  git.setTrackedParent(current, newParent);
+  console.log(`  \x1b[32m✓\x1b[0m Tracked parent updated: ${currentParent} → ${newParent}`);
 
   // Trigger discover on the new parent's PR (if any) so the action-side
   // metadata catches up too.
