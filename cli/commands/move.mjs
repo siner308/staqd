@@ -29,6 +29,21 @@ export async function move(flags) {
     throw new Error('Cannot move a branch onto itself.');
   }
 
+  const defBranch = git.defaultBranch();
+
+  if (!git.getTrackedParent(current)) {
+    throw new Error(
+      `Branch "${current}" is not tracked. Run "st track" first to register it in the stack.`
+    );
+  }
+
+  if (newParent !== defBranch && !git.getTrackedParent(newParent)) {
+    throw new Error(
+      `Parent "${newParent}" is not tracked. Run "st track" on that branch first ` +
+      `(or use "${defBranch}" as the parent).`
+    );
+  }
+
   if (!dryRun && !git.isClean()) {
     throw new Error('Uncommitted changes detected. Commit or stash before running st move.');
   }
@@ -51,9 +66,24 @@ export async function move(flags) {
   }
 
   const oldParent = myPr.baseRefName;
+  const trackedParent = git.getTrackedParent(current);
 
-  if (oldParent === newParent) {
+  if (oldParent === newParent && trackedParent === newParent) {
     console.log(`Already based on ${newParent}.`);
+    return;
+  }
+
+  // PR base already matches but local tracked-parent is stale (or vice versa).
+  // Reconcile metadata without rebasing — the branch is already where it needs
+  // to be on the remote, only the local config or PR base is out of sync.
+  if (oldParent === newParent && trackedParent !== newParent) {
+    if (dryRun) {
+      console.log(`  \x1b[33m~\x1b[0m Would update tracked parent ${trackedParent || '<none>'} → ${newParent}`);
+      return;
+    }
+    git.setTrackedParent(current, newParent);
+    console.log(`  \x1b[32m✓\x1b[0m Tracked parent updated: ${trackedParent || '<none>'} → ${newParent}`);
+    console.log(`  \x1b[90m·\x1b[0m PR #${myPr.number} already based on ${newParent}; no rebase needed`);
     return;
   }
 
@@ -70,6 +100,7 @@ export async function move(flags) {
   if (dryRun) {
     console.log(`  \x1b[33m~\x1b[0m Would rebase --onto ${newParentRef} ${mb.slice(0, 7)} ${current}`);
     console.log(`  \x1b[33m~\x1b[0m Would update PR #${myPr.number} base to ${newParent}`);
+    console.log(`  \x1b[33m~\x1b[0m Would update tracked parent ${trackedParent || '<none>'} → ${newParent}`);
     return;
   }
 
@@ -87,13 +118,14 @@ export async function move(flags) {
   // Push and update PR
   git.pushForce(current);
   git.ghPrEditBase(myPr.number, newParent);
+  git.setTrackedParent(current, newParent);
 
   console.log(`  \x1b[32m✓\x1b[0m Rebased and pushed`);
   console.log(`  \x1b[32m✓\x1b[0m PR #${myPr.number} base updated to ${newParent}`);
+  console.log(`  \x1b[32m✓\x1b[0m Tracked parent updated to ${newParent}`);
 
   // Trigger discover to update metadata
   const { roots } = buildStackTree(git.ghPrList());
-  const defBranch = git.defaultBranch();
 
   // Find root PR of the stack to trigger discover
   const rootPr = prs.find(p => p.baseRefName === defBranch && p.headRefName === newParent)
