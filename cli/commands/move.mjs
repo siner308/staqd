@@ -56,6 +56,7 @@ export async function move(flags) {
   if (!parentSha) {
     throw new Error(`Branch "${newParent}" not found.`);
   }
+  const newParentRef = git.remoteSha(newParent) ? `origin/${newParent}` : newParent;
 
   // Find old parent (current base branch from PR)
   const prs = git.ghPrList();
@@ -68,66 +69,95 @@ export async function move(flags) {
   const oldParent = myPr.baseRefName;
   const trackedParent = git.getTrackedParent(current);
 
-  if (oldParent === newParent && trackedParent === newParent) {
-    console.log(`Already based on ${newParent}.`);
+  // Decide whether a rebase is needed. Current is "already based on" newParent
+  // when newParent's tip is reachable from current — i.e. current sits on top
+  // of newParent in DAG terms. In that case the metadata may still be stale,
+  // but the branch contents are already correct.
+  const needsRebase = !git.isAncestor(newParentRef, current);
+
+  const trackedNeedsUpdate = trackedParent !== newParent;
+  const prBaseNeedsUpdate = oldParent !== newParent;
+
+  if (!needsRebase && !trackedNeedsUpdate && !prBaseNeedsUpdate) {
+    console.log(`Already based on ${newParent}; metadata already matches.`);
     return;
   }
 
-  // PR base already matches but local tracked-parent is stale (or vice versa).
-  // Reconcile metadata without rebasing — the branch is already where it needs
-  // to be on the remote, only the local config or PR base is out of sync.
-  if (oldParent === newParent && trackedParent !== newParent) {
-    if (dryRun) {
-      console.log(`  \x1b[33m~\x1b[0m Would update tracked parent ${trackedParent || '<none>'} → ${newParent}`);
-      return;
+  console.log(`Moving \x1b[1m${current}\x1b[0m → ${newParent}`);
+
+  // Step 1: rebase if needed.
+  if (needsRebase) {
+    // Compute the merge-base with old parent so we can replay only the commits
+    // unique to current. Try the remote ref first; fall back to local if the
+    // old parent's branch was deleted (e.g. squash-merged and pruned).
+    const oldParentRef = git.remoteSha(oldParent)
+      ? `origin/${oldParent}`
+      : (git.localSha(oldParent) ? oldParent : null);
+
+    let mb = oldParentRef ? git.mergeBase(oldParentRef, current) : null;
+
+    // Fallback: if old parent is gone, use the merge-base with new parent.
+    // This drops only commits already shared with newParent, which is the
+    // safe minimum when we have nothing better to skip from.
+    if (!mb) {
+      mb = git.mergeBase(newParentRef, current);
     }
-    git.setTrackedParent(current, newParent);
-    console.log(`  \x1b[32m✓\x1b[0m Tracked parent updated: ${trackedParent || '<none>'} → ${newParent}`);
-    console.log(`  \x1b[90m·\x1b[0m PR #${myPr.number} already based on ${newParent}; no rebase needed`);
-    return;
+
+    if (!mb) {
+      throw new Error(
+        `Cannot find merge-base for ${current}. Old parent "${oldParent}" is unreachable ` +
+        `and current shares no history with ${newParent}.`
+      );
+    }
+
+    if (dryRun) {
+      console.log(`  \x1b[33m~\x1b[0m Would rebase --onto ${newParentRef} ${mb.slice(0, 7)} ${current}`);
+    } else {
+      const r = git.rebaseOnto(newParentRef, mb, current);
+      if (!r.ok) {
+        console.error('\n\x1b[31mConflict during rebase.\x1b[0m Resolve manually:');
+        console.log(`  git rebase --onto ${newParentRef} ${mb.slice(0, 7)} ${current}`);
+        console.log('  # resolve conflicts, then:');
+        console.log(`  git push --force-with-lease origin ${current}`);
+        if (prBaseNeedsUpdate) {
+          console.log(`  gh pr edit ${myPr.number} --base ${newParent}`);
+        }
+        if (trackedNeedsUpdate) {
+          console.log(`  git config --local branch.${current}.staqd-parent ${newParent}`);
+        }
+        throw new Error('Rebase had conflicts.');
+      }
+      git.pushForce(current);
+      console.log(`  \x1b[32m✓\x1b[0m Rebased and pushed`);
+    }
+  } else {
+    console.log(`  \x1b[90m·\x1b[0m ${current} already contains ${newParent}; skipping rebase`);
   }
 
-  console.log(`Moving \x1b[1m${current}\x1b[0m: ${oldParent} → ${newParent}`);
-
-  // Compute merge-base with old parent
-  const mb = git.mergeBase(`origin/${oldParent}`, current);
-  if (!mb) {
-    throw new Error(`Cannot find merge-base between origin/${oldParent} and ${current}.`);
+  // Step 2: reconcile PR base unconditionally.
+  if (prBaseNeedsUpdate) {
+    if (dryRun) {
+      console.log(`  \x1b[33m~\x1b[0m Would update PR #${myPr.number} base: ${oldParent} → ${newParent}`);
+    } else {
+      git.ghPrEditBase(myPr.number, newParent);
+      console.log(`  \x1b[32m✓\x1b[0m PR #${myPr.number} base updated to ${newParent}`);
+    }
   }
 
-  const newParentRef = git.remoteSha(newParent) ? `origin/${newParent}` : newParent;
-
-  if (dryRun) {
-    console.log(`  \x1b[33m~\x1b[0m Would rebase --onto ${newParentRef} ${mb.slice(0, 7)} ${current}`);
-    console.log(`  \x1b[33m~\x1b[0m Would update PR #${myPr.number} base to ${newParent}`);
-    console.log(`  \x1b[33m~\x1b[0m Would update tracked parent ${trackedParent || '<none>'} → ${newParent}`);
-    return;
+  // Step 3: reconcile tracked-parent metadata unconditionally.
+  if (trackedNeedsUpdate) {
+    if (dryRun) {
+      console.log(`  \x1b[33m~\x1b[0m Would update tracked parent: ${trackedParent || '<none>'} → ${newParent}`);
+    } else {
+      git.setTrackedParent(current, newParent);
+      console.log(`  \x1b[32m✓\x1b[0m Tracked parent updated: ${trackedParent || '<none>'} → ${newParent}`);
+    }
   }
 
-  // Rebase onto new parent
-  const r = git.rebaseOnto(newParentRef, mb, current);
-  if (!r.ok) {
-    console.error('\n\x1b[31mConflict during rebase.\x1b[0m Resolve manually:');
-    console.log(`  git rebase --onto ${newParentRef} ${mb.slice(0, 7)} ${current}`);
-    console.log('  # resolve conflicts, then:');
-    console.log(`  git push --force-with-lease origin ${current}`);
-    console.log(`  gh pr edit ${myPr.number} --base ${newParent}`);
-    throw new Error('Rebase had conflicts.');
-  }
+  if (dryRun) return;
 
-  // Push and update PR
-  git.pushForce(current);
-  git.ghPrEditBase(myPr.number, newParent);
-  git.setTrackedParent(current, newParent);
-
-  console.log(`  \x1b[32m✓\x1b[0m Rebased and pushed`);
-  console.log(`  \x1b[32m✓\x1b[0m PR #${myPr.number} base updated to ${newParent}`);
-  console.log(`  \x1b[32m✓\x1b[0m Tracked parent updated to ${newParent}`);
-
-  // Trigger discover to update metadata
-  const { roots } = buildStackTree(git.ghPrList());
-
-  // Find root PR of the stack to trigger discover
+  // Trigger discover on the new parent's PR (if any) so the action-side
+  // metadata catches up too.
   const rootPr = prs.find(p => p.baseRefName === defBranch && p.headRefName === newParent)
     || prs.find(p => p.headRefName === newParent);
 
