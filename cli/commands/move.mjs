@@ -62,13 +62,17 @@ export async function move(flags) {
   // operate until the user reconciles, since metadata may not match the
   // already-pushed branch contents.
   const pending = readPending();
+  // Fail closed on any unreadable marker BEFORE the branch-equality check.
+  // A corrupt marker has no `branch` field, so embedding the corrupt-check
+  // inside the equality guard makes it unreachable — exactly when the
+  // recovery signal cannot be trusted.
+  if (pending && pending._corrupt) {
+    throw new Error(
+      `Pending st move marker at ${pendingPath()} is unreadable: ${pending._error}. ` +
+      `Inspect the file manually, finish any outstanding reconciliation, then delete it.`
+    );
+  }
   if (pending && pending.branch === current) {
-    if (pending._corrupt) {
-      throw new Error(
-        `Pending st move marker at ${pendingPath()} is unreadable: ${pending._error}. ` +
-        `Inspect the file manually, finish any outstanding reconciliation, then delete it.`
-      );
-    }
     throw new Error(
       `Pending st move detected for ${current}: ` +
       `the previous run force-pushed onto "${pending.newParent}" but metadata updates failed. ` +
