@@ -161,15 +161,47 @@ export async function move(flags) {
   git.pushForce(current);
   console.log(`  \x1b[32m✓\x1b[0m Rebased and pushed`);
 
-  // Update tracked-parent BEFORE the fallible PR edit. If ghPrEditBase later
-  // throws (network/auth), the next run sees tracked=newParent vs PR base=
-  // oldParent — the drift gate fires with a clear reconciliation menu instead
-  // of silently treating the stale metadata as authoritative.
-  git.setTrackedParent(current, newParent);
-  console.log(`  \x1b[32m✓\x1b[0m Tracked parent updated: ${currentParent} → ${newParent}`);
+  // Both metadata updates must be attempted independently. If only one fails,
+  // the other still records newParent and the drift gate (oldParent !==
+  // trackedParent) fires on the next run. If both fail, neither metadata
+  // source reflects reality — surface the failure with explicit recovery
+  // commands so the user can finish reconciliation manually. Sequencing one
+  // before the other (round-3 attempt) just trades which corruption window
+  // is open; running them independently closes both.
+  const failures = [];
 
-  git.ghPrEditBase(myPr.number, newParent);
-  console.log(`  \x1b[32m✓\x1b[0m PR #${myPr.number} base updated to ${newParent}`);
+  try {
+    git.setTrackedParent(current, newParent);
+    console.log(`  \x1b[32m✓\x1b[0m Tracked parent updated: ${currentParent} → ${newParent}`);
+  } catch (e) {
+    failures.push({
+      step: 'setTrackedParent',
+      error: e.message.split('\n')[0],
+      recovery: `git config --local branch.${current}.staqd-parent ${newParent}`,
+    });
+  }
+
+  try {
+    git.ghPrEditBase(myPr.number, newParent);
+    console.log(`  \x1b[32m✓\x1b[0m PR #${myPr.number} base updated to ${newParent}`);
+  } catch (e) {
+    failures.push({
+      step: 'ghPrEditBase',
+      error: e.message.split('\n')[0],
+      recovery: `gh pr edit ${myPr.number} --base ${newParent}`,
+    });
+  }
+
+  if (failures.length > 0) {
+    console.error('\n\x1b[31mPost-push metadata update failed.\x1b[0m');
+    console.error(`The branch is rebased and pushed onto ${newParent}, but some metadata`);
+    console.error('did not update. Run the following to finish reconciliation:\n');
+    for (const f of failures) {
+      console.error(`  \x1b[31m✗\x1b[0m ${f.step}: ${f.error}`);
+      console.error(`     fix: ${f.recovery}`);
+    }
+    throw new Error('Partial post-push state. See recovery commands above.');
+  }
 
   // Trigger discover on the new parent's PR (if any) so the action-side
   // metadata catches up too.
