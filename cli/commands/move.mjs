@@ -1,7 +1,34 @@
 // st move <parent> — Move current branch to a new parent.
 
+import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';
+import { join } from 'node:path';
 import * as git from '../git.mjs';
 import { buildStackTree, printTree } from '../stack.mjs';
+
+const PENDING_FILE = 'staqd-move-pending.json';
+
+function pendingPath() {
+  return join(git.gitDir(), PENDING_FILE);
+}
+
+function readPending() {
+  try {
+    const raw = readFileSync(pendingPath(), 'utf-8');
+    return JSON.parse(raw);
+  } catch (e) {
+    if (e.code === 'ENOENT') return null;
+    // Corrupt marker — surface but don't crash; treat as present-but-unparseable
+    return { _corrupt: true, _error: e.message };
+  }
+}
+
+function writePending(data) {
+  writeFileSync(pendingPath(), JSON.stringify(data, null, 2));
+}
+
+function clearPending() {
+  try { unlinkSync(pendingPath()); } catch (e) { if (e.code !== 'ENOENT') throw e; }
+}
 
 export const spec = {
   name: 'move',
@@ -27,6 +54,31 @@ export async function move(flags) {
 
   if (current === newParent) {
     throw new Error('Cannot move a branch onto itself.');
+  }
+
+  // Pending-move marker check. If a previous st move force-pushed but the
+  // post-push metadata writes both failed (extraordinary but possible: local
+  // .git/config write + gh API both fail), the marker persists. Refuse to
+  // operate until the user reconciles, since metadata may not match the
+  // already-pushed branch contents.
+  const pending = readPending();
+  if (pending && pending.branch === current) {
+    if (pending._corrupt) {
+      throw new Error(
+        `Pending st move marker at ${pendingPath()} is unreadable: ${pending._error}. ` +
+        `Inspect the file manually, finish any outstanding reconciliation, then delete it.`
+      );
+    }
+    throw new Error(
+      `Pending st move detected for ${current}: ` +
+      `the previous run force-pushed onto "${pending.newParent}" but metadata updates failed. ` +
+      `Branch contents on origin reflect "${pending.newParent}", but metadata may still point at "${pending.currentParent}".\n` +
+      `Reconcile manually before retrying:\n` +
+      `  git config --local branch.${current}.staqd-parent ${pending.newParent}\n` +
+      `  gh pr edit <pr-number> --base ${pending.newParent}\n` +
+      `Then clear the marker:\n` +
+      `  rm ${pendingPath()}`
+    );
   }
 
   const defBranch = git.defaultBranch();
@@ -158,6 +210,22 @@ export async function move(flags) {
     console.log(`  git config --local branch.${current}.staqd-parent ${newParent}`);
     throw new Error('Rebase had conflicts.');
   }
+
+  // Persist a pending-move marker BEFORE the irreversible force-push. If
+  // both metadata writes later fail, this file is the only durable signal
+  // that origin/<current> has moved while metadata didn't. The next st move
+  // refuses to operate until the user clears it. If the marker write itself
+  // fails (e.g. .git is read-only), abort before pushing — metadata writes
+  // would also fail and we'd corrupt without recovery.
+  try {
+    writePending({ branch: current, currentParent, newParent });
+  } catch (e) {
+    throw new Error(
+      `Cannot create recovery marker at ${pendingPath()}: ${e.message}. ` +
+      `Aborting before push to prevent unrecoverable state.`
+    );
+  }
+
   git.pushForce(current);
   console.log(`  \x1b[32m✓\x1b[0m Rebased and pushed`);
 
@@ -200,8 +268,12 @@ export async function move(flags) {
       console.error(`  \x1b[31m✗\x1b[0m ${f.step}: ${f.error}`);
       console.error(`     fix: ${f.recovery}`);
     }
+    console.error(`\nThen remove the pending-move marker:\n  rm ${pendingPath()}`);
     throw new Error('Partial post-push state. See recovery commands above.');
   }
+
+  // All metadata writes succeeded — clear the pending marker.
+  clearPending();
 
   // Trigger discover on the new parent's PR (if any) so the action-side
   // metadata catches up too.

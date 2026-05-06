@@ -22,6 +22,13 @@ export function currentBranch() {
   return run('git', ['symbolic-ref', '--short', 'HEAD'], { silent: true });
 }
 
+// Path to the .git directory (or the worktree-resolved destination if .git
+// is a file). Used to anchor staqd's local state files (e.g. recovery
+// markers).
+export function gitDir() {
+  return run('git', ['rev-parse', '--git-dir'], { silent: true });
+}
+
 export function defaultBranch() {
   const ref = run('git', ['symbolic-ref', 'refs/remotes/origin/HEAD'], { silent: true });
   if (ref) return ref.replace('refs/remotes/origin/', '');
