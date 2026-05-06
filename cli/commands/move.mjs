@@ -106,9 +106,17 @@ export async function move(flags) {
 
   if (!parentRef) {
     const merged = git.ghPrListMergedForBranch(currentParent);
-    if (merged.known && merged.prs.length > 0) {
+    // Refuse ambiguous recovery: if the head ref name has multiple merged
+    // PRs, branch-name reuse may have associated the SHA with a different
+    // PR than the actual previous parent.
+    if (merged.known && merged.prs.length === 1) {
       const headRefOid = merged.prs[0].headRefOid;
-      if (headRefOid && git.localSha(headRefOid)) {
+      // Only trust the SHA if it's locally reachable AND is actually an
+      // ancestor of current. Without the ancestry check, a stale object
+      // (loose pre-GC, reflog) can resolve as "exists" while having no
+      // relationship to current's history — picking it as the rebase
+      // boundary would force-push wrong content.
+      if (headRefOid && git.localSha(headRefOid) && git.isAncestor(headRefOid, current)) {
         parentRef = headRefOid;
       }
     }
@@ -153,11 +161,15 @@ export async function move(flags) {
   git.pushForce(current);
   console.log(`  \x1b[32m✓\x1b[0m Rebased and pushed`);
 
-  git.ghPrEditBase(myPr.number, newParent);
-  console.log(`  \x1b[32m✓\x1b[0m PR #${myPr.number} base updated to ${newParent}`);
-
+  // Update tracked-parent BEFORE the fallible PR edit. If ghPrEditBase later
+  // throws (network/auth), the next run sees tracked=newParent vs PR base=
+  // oldParent — the drift gate fires with a clear reconciliation menu instead
+  // of silently treating the stale metadata as authoritative.
   git.setTrackedParent(current, newParent);
   console.log(`  \x1b[32m✓\x1b[0m Tracked parent updated: ${currentParent} → ${newParent}`);
+
+  git.ghPrEditBase(myPr.number, newParent);
+  console.log(`  \x1b[32m✓\x1b[0m PR #${myPr.number} base updated to ${newParent}`);
 
   // Trigger discover on the new parent's PR (if any) so the action-side
   // metadata catches up too.
